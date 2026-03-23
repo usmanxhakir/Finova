@@ -30,8 +30,11 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
     const bill = billData as any
 
     if (billError || !bill) {
-        throw new Error(`Failed to create bill: ${billError?.message}`)
+    if (billError?.code === '23505') {
+        throw new Error('DUPLICATE_NUMBER')
     }
+    throw new Error(`Failed to create bill: ${billError?.message}`)
+}
 
     // 2. Insert Line Items
     const lineItems = values.line_items.map((item: any) => ({

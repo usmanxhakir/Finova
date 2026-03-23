@@ -51,8 +51,17 @@ export default function NewBillPage() {
     const prefix = settings?.bill_prefix || 'BILL-'
     const nextNumber = `${prefix}${String(settings?.bill_next_number || 1).padStart(4, '0')}`
 
-    const onSave = async (values: any, isFinalize: boolean) => {
+  const onSave = async (values: any, isFinalize: boolean) => {
+    try {
         await handleSaveBill(values, isFinalize, settings)
+    } catch (error: any) {
+        const msg = error?.message || ''
+        if (msg.includes('duplicate key') || msg.includes('bills_number_key') || msg.includes('unique constraint')) {
+            throw new Error('DUPLICATE_NUMBER')
+        }
+        throw error
+    }
+}
     }
 
     return (

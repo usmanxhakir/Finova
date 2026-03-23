@@ -193,16 +193,31 @@ export function BillForm({
         }
     }
 
-    const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
-        try {
-            setIsSubmitting(true)
-            await onSave(values, isFinalize)
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to save bill')
-        } finally {
-            setIsSubmitting(false)
+const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
+    try {
+        setIsSubmitting(true)
+
+        // Client-side duplicate check before hitting server
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const { data: existing } = await supabase
+            .from('bills')
+            .select('id')
+            .eq('number', values.number)
+            .maybeSingle()
+
+        if (existing) {
+            setShowDuplicateDialog(true)
+            return
         }
+
+        await onSave(values, isFinalize)
+    } catch (error: any) {
+        toast.error(error.message || 'Failed to save bill')
+    } finally {
+        setIsSubmitting(false)
     }
+}
 
     // Filter expense related accounts
     const expenseAccounts = accounts.filter(a => a.type === 'expense' || a.type === 'cost_of_goods_sold' || a.type === 'asset' || a.type === 'liability')

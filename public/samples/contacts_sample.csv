@@ -1,0 +1,4 @@
+Name,Type,Email,Phone,Website,Address,City,State,Zip,Country,Tax Number,Notes
+Acme Corp,customer,contact@acme.com,+1-555-0123,https://acme.com,123 Main St,Springfield,IL,62701,USA,12-3456789,Key customer
+Global Vendor,vendor,info@global.com,+1-555-4567,https://global.com,456 Oak Ave,Metropolis,NY,10001,USA,,Reliable supplier
+John Doe,both,john@doe.com,+1-555-8888,,789 Pine Rd,Smallville,KS,66002,USA,,Consultant and client

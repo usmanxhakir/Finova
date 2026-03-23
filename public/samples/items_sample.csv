@@ -1,0 +1,4 @@
+Name,Description,Type,Unit,Default Rate,Income Account,Expense Account
+Consulting,Professional services,service,hrs,150,4000 - Sales,6000 - Professional Fees
+Office Supplies,General office materials,product,pcs,25,4000 - Sales,6100 - Office Supplies
+Web Hosting,Monthly subscription,service,mo,20,4000 - Sales,6200 - Subscriptions

@@ -52,7 +52,10 @@ export default function NewInvoicePage() {
     const nextNumber = `${prefix}${String(settings?.invoice_next_number || 1).padStart(4, '0')}`
 
     const onSave = async (values: any, isFinalize: boolean) => {
-        await handleSaveInvoice(values, isFinalize, settings)
+        const result = await handleSaveInvoice(values, isFinalize, settings)
+        if (result && result.success === false) {
+            throw new Error(result.errorCode)
+        }
     }
 
     return (

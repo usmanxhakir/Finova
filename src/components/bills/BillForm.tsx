@@ -99,6 +99,7 @@ export function BillForm({
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
 
     const form = useForm<BillFormValues>({
         resolver: zodResolver(billSchema) as any,
@@ -196,24 +197,13 @@ export function BillForm({
 const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
     try {
         setIsSubmitting(true)
-
-        // Client-side duplicate check before hitting server
-        const { createClient } = await import('@/lib/supabase/client')
-        const supabase = createClient()
-        const { data: existing } = await supabase
-            .from('bills')
-            .select('id')
-            .eq('number', values.number)
-            .maybeSingle()
-
-        if (existing) {
-            setShowDuplicateDialog(true)
-            return
-        }
-
         await onSave(values, isFinalize)
     } catch (error: any) {
-        toast.error(error.message || 'Failed to save bill')
+        if (error.message === 'DUPLICATE_NUMBER') {
+            setShowDuplicateDialog(true)
+        } else {
+            toast.error(error.message || 'Failed to save bill')
+        }
     } finally {
         setIsSubmitting(false)
     }
@@ -535,6 +525,22 @@ const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
                             Leave Without Saving
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Bill Number Already Exists</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Bill number <strong>{form.getValues('number')}</strong> is already in use.
+                            Please update the Bill # field to a unique number and try again.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setShowDuplicateDialog(false)}>
+                            Got it
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { createInvoiceJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any) {
+export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
     const supabase = await createClient()
 
     // 1. Insert Invoice
@@ -31,7 +31,10 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
     const invoice = invoiceData as any
 
     if (invoiceError || !invoice) {
-        throw new Error(`Failed to create invoice: ${invoiceError?.message}`)
+        if (invoiceError?.code === '23505') {
+            return { success: false, errorCode: 'DUPLICATE_NUMBER' }
+        }
+        return { success: false, errorCode: 'UNKNOWN', message: invoiceError?.message || 'Failed to create invoice' }
     }
 
     // 2. Insert Line Items

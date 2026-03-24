@@ -108,6 +108,7 @@ export function InvoiceForm({
     const router = useRouter()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showLeaveDialog, setShowLeaveDialog] = useState(false)
+    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
 
     const form = useForm<InvoiceFormValues>({
         resolver: zodResolver(invoiceSchema) as any,
@@ -208,7 +209,11 @@ export function InvoiceForm({
             setIsSubmitting(true)
             await onSave(values, isFinalize)
         } catch (error: any) {
-            toast.error(error.message || 'Failed to save invoice')
+            if (error.message === 'DUPLICATE_NUMBER') {
+                setShowDuplicateDialog(true)
+            } else {
+                toast.error(error.message || 'Failed to save invoice')
+            }
         } finally {
             setIsSubmitting(false)
         }
@@ -515,6 +520,22 @@ export function InvoiceForm({
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
                             Leave Without Saving
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Invoice Number Already Exists</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Invoice number <strong>{form.getValues('number')}</strong> is already in use.
+                            Please update the Invoice # field to a unique number and try again.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setShowDuplicateDialog(false)}>
+                            Got it
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

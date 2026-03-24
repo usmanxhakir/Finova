@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveBill(values: any, isFinalize: boolean, settings: any) {
+export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
     const supabase = await createClient()
 
     // 1. Insert Bill
@@ -30,11 +30,11 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
     const bill = billData as any
 
     if (billError || !bill) {
-    if (billError?.code === '23505') {
-        throw new Error('DUPLICATE_NUMBER')
+        if (billError?.code === '23505') {
+            return { success: false, errorCode: 'DUPLICATE_NUMBER' }
+        }
+        return { success: false, errorCode: 'UNKNOWN', message: billError?.message || 'Failed to create bill' }
     }
-    throw new Error(`Failed to create bill: ${billError?.message}`)
-}
 
     // 2. Insert Line Items
     const lineItems = values.line_items.map((item: any) => ({

@@ -96,17 +96,18 @@ export function DashboardCharts({ chartData, expenseBreakdown }: ChartProps) {
                         </div>
                     ) : (
                         <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
                                 <Pie
                                     data={expenseBreakdown}
-                                    cx="50%"
+                                    cx="40%"
                                     cy="50%"
-                                    innerRadius={80}
-                                    outerRadius={120}
+                                    innerRadius={70}
+                                    outerRadius={100}
                                     paddingAngle={5}
                                     dataKey="value"
                                     nameKey="name"
-                                    stroke="none"
+                                    stroke="#fff"
+                                    strokeWidth={2}
                                 >
                                     {expenseBreakdown.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -128,11 +129,12 @@ export function DashboardCharts({ chartData, expenseBreakdown }: ChartProps) {
                                     align="right"
                                     iconType="circle"
                                     wrapperStyle={{
-                                        paddingLeft: '20px',
+                                        paddingLeft: '30px',
                                         fontSize: '11px',
                                         fontWeight: 600,
                                         textTransform: 'uppercase',
-                                        letterSpacing: '0.05em'
+                                        letterSpacing: '0.05em',
+                                        lineHeight: '22px'
                                     }}
                                 />
                             </PieChart>

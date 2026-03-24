@@ -6,6 +6,7 @@ import { useEffect, useState, use } from 'react'
 import { BillForm } from '@/components/bills/BillForm'
 import { StatusBadge } from '@/components/bills/BillTable'
 import { RecordBillPaymentModal } from '@/components/bills/RecordBillPaymentModal'
+import { BillDownloadButton } from '@/components/bills/BillDownloadButton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -37,6 +38,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
     const [vendors, setVendors] = useState<any[]>([])
     const [items, setItems] = useState<any[]>([])
     const [accounts, setAccounts] = useState<any[]>([])
+    const [settings, setSettings] = useState<any>(null)
     const [bankAccounts, setBankAccounts] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -63,12 +65,14 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                     { data: vendData },
                     { data: itemData },
                     { data: accData },
+                    { data: settData },
                     { data: bankData }
                 ] = await Promise.all([
                     supabase.from('bills').select('*, contacts(*), bill_line_items(*)').eq('id', id).single(),
                     supabase.from('contacts').select('id, name').in('type', ['vendor', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
+                    supabase.from('company_settings').select('*').single(),
                     supabase.from('accounts').select('id, name, code').in('sub_type', ['bank', 'cash']).eq('is_active', true)
                 ])
 
@@ -81,6 +85,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                 setVendors(vendData || [])
                 setItems(itemData || [])
                 setAccounts(accData || [])
+                setSettings(settData)
                 setBankAccounts(bankData || [])
             } catch (error) {
                 console.error('Error loading bill:', error)
@@ -156,6 +161,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <BillDownloadButton bill={bill} settings={settings} />
                     {!isViewer && bill.status !== 'void' && bill.status !== 'paid' && (
                         <RecordBillPaymentModal
                             bill={bill}

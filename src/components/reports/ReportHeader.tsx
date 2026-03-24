@@ -1,19 +1,17 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Printer, Download, ArrowLeft } from 'lucide-react'
+import { Printer, Download, ArrowLeft, FileText, FileSpreadsheet } from 'lucide-react'
 import Link from 'next/link'
 
 interface ReportHeaderProps {
     title: string
     description?: string
-    onPrint?: () => void
-    onExport?: () => void
+    onPdf?: () => void
+    onExcel?: () => void
 }
 
-export function ReportHeader({ title, description, onPrint, onExport }: ReportHeaderProps) {
-    const defaultPrint = () => window.print()
-
+export function ReportHeader({ title, description, onPdf, onExcel }: ReportHeaderProps) {
     return (
         <div className="flex flex-col gap-4 mb-6 print:hidden">
             <div className="flex items-center gap-2">
@@ -29,11 +27,11 @@ export function ReportHeader({ title, description, onPrint, onExport }: ReportHe
                     {description && <p className="text-muted-foreground">{description}</p>}
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={onPrint || defaultPrint}>
-                        <Printer className="h-4 w-4 mr-2" /> Print
+                    <Button variant="outline" size="sm" onClick={onPdf}>
+                        <FileText className="h-4 w-4 mr-2" /> PDF
                     </Button>
-                    <Button variant="outline" size="sm" onClick={onExport}>
-                        <Download className="h-4 w-4 mr-2" /> Export
+                    <Button variant="outline" size="sm" onClick={onExcel}>
+                        <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
                     </Button>
                 </div>
             </div>

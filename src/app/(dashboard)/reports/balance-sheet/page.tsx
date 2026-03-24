@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ReportHeader } from '@/components/reports/ReportHeader'
+import { reportExport } from '@/lib/report-export'
 import {
     Table,
     TableBody,
@@ -40,6 +41,15 @@ export default function BalanceSheetPage() {
     const [asOfDate, setAsOfDate] = useState<Date>(new Date())
     const [loading, setLoading] = useState(true)
     const [accounts, setAccounts] = useState<BSAccount[]>([])
+    const [companySettings, setCompanySettings] = useState<any>(null)
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            const { data } = await supabase.from('company_settings').select('*').single()
+            if (data) setCompanySettings(data)
+        }
+        fetchSettings()
+    }, [])
 
     const loadData = async () => {
         setLoading(true)
@@ -161,11 +171,94 @@ export default function BalanceSheetPage() {
         })
     }
 
+    const handlePdfExport = () => {
+        const headers = ['Account', 'Amount']
+        const rows: any[][] = []
+
+        // ASSETS
+        rows.push([{ content: 'ASSETS', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        assets.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            rows.push([`${acc.code} - ${acc.name}`, formatCurrency(acc.balance)])
+        })
+        rows.push([{ content: 'Total Assets', styles: { fontStyle: 'bold' } }, { content: formatCurrency(totalAssets), styles: { fontStyle: 'bold' } }])
+
+        rows.push(['', ''])
+
+        // LIABILITIES
+        rows.push([{ content: 'LIABILITIES', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        liabilities.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            rows.push([`${acc.code} - ${acc.name}`, formatCurrency(acc.balance)])
+        })
+        rows.push([{ content: 'Total Liabilities', styles: { fontStyle: 'bold' } }, { content: formatCurrency(totalLiabilities), styles: { fontStyle: 'bold' } }])
+
+        rows.push(['', ''])
+
+        // EQUITY
+        rows.push([{ content: 'EQUITY', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        equity.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            rows.push([`${acc.code} - ${acc.name}`, formatCurrency(acc.balance)])
+        })
+        rows.push(['Net Income / Retained Earnings', formatCurrency(netIncomeValue)])
+        rows.push([{ content: 'Total Equity', styles: { fontStyle: 'bold' } }, { content: formatCurrency(totalEquity), styles: { fontStyle: 'bold' } }])
+
+        rows.push(['', ''])
+
+        // TOTAL L+E
+        rows.push([{ 
+            content: 'Total Liabilities + Equity', 
+            styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 0, 0] } 
+        }, { 
+            content: formatCurrency(totalLiabilities + totalEquity), 
+            styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: [0, 0, 0] } 
+        }])
+
+        reportExport.toPDF({
+            title: 'Balance Sheet',
+            companyName: companySettings?.name || 'Finova',
+            dateRange: `As of ${format(asOfDate, 'MMMM dd, yyyy')}`,
+            headers,
+            rows,
+            filename: 'Balance-Sheet'
+        })
+    }
+
+    const handleExcelExport = () => {
+        const data: any[] = []
+        
+        data.push({ Account: 'ASSETS' })
+        assets.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            data.push({ Account: `${acc.code} - ${acc.name}`, Amount: acc.balance })
+        })
+        data.push({ Account: 'Total Assets', Amount: totalAssets })
+        data.push({})
+
+        data.push({ Account: 'LIABILITIES' })
+        liabilities.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            data.push({ Account: `${acc.code} - ${acc.name}`, Amount: acc.balance })
+        })
+        data.push({ Account: 'Total Liabilities', Amount: totalLiabilities })
+        data.push({})
+
+        data.push({ Account: 'EQUITY' })
+        equity.filter(a => Math.abs(a.balance) > 0).forEach(acc => {
+            data.push({ Account: `${acc.code} - ${acc.name}`, Amount: acc.balance })
+        })
+        data.push({ Account: 'Net Income / Retained Earnings', Amount: netIncomeValue })
+        data.push({ Account: 'Total Equity', Amount: totalEquity })
+        data.push({})
+
+        data.push({ Account: 'Total Liabilities + Equity', Amount: totalLiabilities + totalEquity })
+
+        reportExport.toExcel(data, 'Balance-Sheet')
+    }
+
     return (
         <div className="flex flex-col gap-6 p-6 max-w-4xl mx-auto">
             <ReportHeader
                 title="Balance Sheet"
                 description={`As of ${format(asOfDate, 'MMMM dd, yyyy')}`}
+                onPdf={handlePdfExport}
+                onExcel={handleExcelExport}
             />
 
             <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg print:hidden">

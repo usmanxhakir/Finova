@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ReportHeader } from '@/components/reports/ReportHeader'
+import { reportExport } from '@/lib/report-export'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import {
     Table,
     TableBody,
@@ -41,6 +44,16 @@ export default function ProfitLossPage() {
     const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()))
     const [loading, setLoading] = useState(true)
     const [accounts, setAccounts] = useState<AccountSummary[]>([])
+    const [showComparative, setShowComparative] = useState(false)
+    const [companySettings, setCompanySettings] = useState<any>(null)
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            const { data } = await supabase.from('company_settings').select('*').single()
+            if (data) setCompanySettings(data)
+        }
+        fetchSettings()
+    }, [])
 
     const loadData = async () => {
         setLoading(true)
@@ -176,12 +189,169 @@ export default function ProfitLossPage() {
                     <TableCell className="text-right py-2 tabular-nums">
                         {formatCurrency(currentVal)}
                     </TableCell>
-                    <TableCell className="text-right py-2 tabular-nums text-muted-foreground group-hover:text-zinc-500 transition-colors">
-                        {formatCurrency(priorVal)}
-                    </TableCell>
+                    {showComparative && (
+                        <TableCell className="text-right py-2 tabular-nums text-muted-foreground group-hover:text-zinc-500 transition-colors">
+                            {formatCurrency(priorVal)}
+                        </TableCell>
+                    )}
                 </TableRow>
             )
         })
+    }
+
+    const handlePdfExport = () => {
+        const headers = ['Account', 'Current Period']
+        if (showComparative) headers.push('Prior Period')
+
+        const rows: any[][] = []
+
+        // INCOME
+        rows.push([{ content: 'INCOME', colSpan: headers.length, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        income.forEach(acc => {
+            const row = [`${acc.code} - ${acc.name}`, formatCurrency(acc.currentPeriod)]
+            if (showComparative) row.push(formatCurrency(acc.priorPeriod))
+            rows.push(row)
+        })
+        
+        const incomeTotalCells = [
+            { content: 'Total Income', styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(incomeTotals.current), styles: { fontStyle: 'bold' } }
+        ]
+        if (showComparative) incomeTotalCells.push({ content: formatCurrency(incomeTotals.prior), styles: { fontStyle: 'bold' } })
+        rows.push(incomeTotalCells)
+
+        rows.push(['', '', '']) // Spacer
+
+        // COGS
+        rows.push([{ content: 'COST OF GOODS SOLD', colSpan: headers.length, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        cogs.forEach(acc => {
+            const row = [`${acc.code} - ${acc.name}`, formatCurrency(-acc.currentPeriod)]
+            if (showComparative) row.push(formatCurrency(-acc.priorPeriod))
+            rows.push(row)
+        })
+        
+        const cogsTotalCells = [
+            { content: 'Total COGS', styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(-cogsTotals.current), styles: { fontStyle: 'bold' } }
+        ]
+        if (showComparative) cogsTotalCells.push({ content: formatCurrency(-cogsTotals.prior), styles: { fontStyle: 'bold' } })
+        rows.push(cogsTotalCells)
+
+        rows.push(['', '', '']) // Spacer
+
+        // GROSS PROFIT
+        const gpCells = [
+            { content: 'GROSS PROFIT', styles: { fontStyle: 'bold', fillColor: [230, 230, 230] } },
+            { content: formatCurrency(grossProfit.current), styles: { fontStyle: 'bold', fillColor: [230, 230, 230] } }
+        ]
+        if (showComparative) gpCells.push({ content: formatCurrency(grossProfit.prior), styles: { fontStyle: 'bold', fillColor: [230, 230, 230] } })
+        rows.push(gpCells)
+
+        rows.push(['', '', '']) // Spacer
+
+        // EXPENSES
+        rows.push([{ content: 'OPERATING EXPENSES', colSpan: headers.length, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }])
+        expenses.forEach(acc => {
+            const row = [`${acc.code} - ${acc.name}`, formatCurrency(-acc.currentPeriod)]
+            if (showComparative) row.push(formatCurrency(-acc.priorPeriod))
+            rows.push(row)
+        })
+        
+        const expTotalCells = [
+            { content: 'Total Expenses', styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(-expenseTotals.current), styles: { fontStyle: 'bold' } }
+        ]
+        if (showComparative) expTotalCells.push({ content: formatCurrency(-expenseTotals.prior), styles: { fontStyle: 'bold' } })
+        rows.push(expTotalCells)
+
+        rows.push(['', '', '']) // Spacer
+
+        // NET INCOME
+        const niFillColor = netIncome.current >= 0 ? [34, 197, 94] : [239, 68, 68]
+        const niCells = [
+            { content: 'NET INCOME', styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: niFillColor } },
+            { content: formatCurrency(netIncome.current), styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: niFillColor } }
+        ]
+        if (showComparative) niCells.push({ content: formatCurrency(netIncome.prior), styles: { fontStyle: 'bold', textColor: [255, 255, 255], fillColor: niFillColor } })
+        rows.push(niCells)
+
+        reportExport.toPDF({
+            title: 'Profit & Loss Statement',
+            companyName: companySettings?.name || 'Finova',
+            dateRange: `From ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`,
+            headers,
+            rows,
+            filename: 'Profit-Loss-Report'
+        })
+    }
+
+    const handleExcelExport = () => {
+        const data: any[] = []
+
+        // Income
+        data.push({ Account: 'INCOME' })
+        income.forEach(acc => {
+            data.push({
+                Account: `${acc.code} - ${acc.name}`,
+                'Current Period': acc.currentPeriod,
+                ...(showComparative ? { 'Prior Period': acc.priorPeriod } : {})
+            })
+        })
+        data.push({
+            Account: 'Total Income',
+            'Current Period': incomeTotals.current,
+            ...(showComparative ? { 'Prior Period': incomeTotals.prior } : {})
+        })
+        data.push({}) // Spacer
+
+        // COGS
+        data.push({ Account: 'COST OF GOODS SOLD' })
+        cogs.forEach(acc => {
+            data.push({
+                Account: `${acc.code} - ${acc.name}`,
+                'Current Period': -acc.currentPeriod,
+                ...(showComparative ? { 'Prior Period': -acc.priorPeriod } : {})
+            })
+        })
+        data.push({
+            Account: 'Total COGS',
+            'Current Period': -cogsTotals.current,
+            ...(showComparative ? { 'Prior Period': -cogsTotals.prior } : {})
+        })
+        data.push({}) // Spacer
+
+        // Gross Profit
+        data.push({
+            Account: 'GROSS PROFIT',
+            'Current Period': grossProfit.current,
+            ...(showComparative ? { 'Prior Period': grossProfit.prior } : {})
+        })
+        data.push({}) // Spacer
+
+        // Expenses
+        data.push({ Account: 'OPERATING EXPENSES' })
+        expenses.forEach(acc => {
+            data.push({
+                Account: `${acc.code} - ${acc.name}`,
+                'Current Period': -acc.currentPeriod,
+                ...(showComparative ? { 'Prior Period': -acc.priorPeriod } : {})
+            })
+        })
+        data.push({
+            Account: 'Total Expenses',
+            'Current Period': -expenseTotals.current,
+            ...(showComparative ? { 'Prior Period': -expenseTotals.prior } : {})
+        })
+        data.push({}) // Spacer
+
+        // Net Income
+        data.push({
+            Account: 'NET INCOME',
+            'Current Period': netIncome.current,
+            ...(showComparative ? { 'Prior Period': netIncome.prior } : {})
+        })
+
+        reportExport.toExcel(data, 'Profit-Loss-Report')
     }
 
     return (
@@ -189,36 +359,51 @@ export default function ProfitLossPage() {
             <ReportHeader
                 title="Profit & Loss Statement"
                 description={`From ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`}
+                onPdf={handlePdfExport}
+                onExcel={handleExcelExport}
             />
 
-            <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg print:hidden">
-                <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Start Date</span>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-[180px] justify-start text-left font-normal h-9">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(startDate, "MMM dd, yyyy")}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" selected={startDate} onSelect={(d) => d && setStartDate(d)} initialFocus />
-                        </PopoverContent>
-                    </Popover>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">End Date</span>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-[180px] justify-start text-left font-normal h-9">
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {format(endDate, "MMM dd, yyyy")}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" selected={endDate} onSelect={(d) => d && setEndDate(d)} initialFocus />
-                        </PopoverContent>
-                    </Popover>
+            <div className="flex flex-col gap-4 bg-muted/50 p-4 rounded-lg print:hidden">
+                <div className="flex items-center gap-6">
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Start Date</span>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-[180px] justify-start text-left font-normal h-9">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {format(startDate, "MMM dd, yyyy")}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={startDate} onSelect={(d) => d && setStartDate(d)} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">End Date</span>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-[180px] justify-start text-left font-normal h-9">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {format(endDate, "MMM dd, yyyy")}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={endDate} onSelect={(d) => d && setEndDate(d)} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+
+                    <div className="flex items-center space-x-2 ml-4 border-l pl-6 border-zinc-300">
+                        <Checkbox 
+                            id="comparative" 
+                            checked={showComparative} 
+                            onCheckedChange={(checked) => setShowComparative(checked as boolean)}
+                        />
+                        <Label htmlFor="comparative" className="text-sm font-medium cursor-pointer">
+                            Show Comparative (Prior Period)
+                        </Label>
+                    </div>
                 </div>
             </div>
 
@@ -239,7 +424,7 @@ export default function ProfitLossPage() {
                             <TableRow className="hover:bg-transparent border-b-2 border-zinc-200">
                                 <TableHead className="w-full text-zinc-900 font-bold uppercase tracking-wider text-xs">Accounts</TableHead>
                                 <TableHead className="text-right text-zinc-900 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Current Period</TableHead>
-                                <TableHead className="text-right text-zinc-500 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Prior Period</TableHead>
+                                {showComparative && <TableHead className="text-right text-zinc-500 font-bold uppercase tracking-wider text-xs whitespace-nowrap">Prior Period</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -253,7 +438,7 @@ export default function ProfitLossPage() {
                             <TableRow className="border-t border-zinc-100 font-semibold bg-zinc-50/50">
                                 <TableCell className="pl-4 py-3">Total Income</TableCell>
                                 <TableCell className="text-right py-3">{formatCurrency(incomeTotals.current)}</TableCell>
-                                <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(incomeTotals.prior)}</TableCell>
+                                {showComparative && <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(incomeTotals.prior)}</TableCell>}
                             </TableRow>
 
                             {/* COGS */}
@@ -266,14 +451,14 @@ export default function ProfitLossPage() {
                             <TableRow className="border-t border-zinc-100 font-semibold bg-zinc-50/50">
                                 <TableCell className="pl-4 py-3">Total COGS</TableCell>
                                 <TableCell className="text-right py-3">{formatCurrency(-cogsTotals.current)}</TableCell>
-                                <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(-cogsTotals.prior)}</TableCell>
+                                {showComparative && <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(-cogsTotals.prior)}</TableCell>}
                             </TableRow>
 
                             {/* GROSS PROFIT */}
                             <TableRow className="border-t-2 border-zinc-200 bg-zinc-100/50 font-bold">
                                 <TableCell className="py-4 text-zinc-900">GROSS PROFIT</TableCell>
                                 <TableCell className="text-right py-4">{formatCurrency(grossProfit.current)}</TableCell>
-                                <TableCell className="text-right py-4 text-muted-foreground">{formatCurrency(grossProfit.prior)}</TableCell>
+                                {showComparative && <TableCell className="text-right py-4 text-muted-foreground">{formatCurrency(grossProfit.prior)}</TableCell>}
                             </TableRow>
 
                             {/* EXPENSES */}
@@ -286,7 +471,7 @@ export default function ProfitLossPage() {
                             <TableRow className="border-t border-zinc-100 font-semibold bg-zinc-50/50">
                                 <TableCell className="pl-4 py-3">Total Expenses</TableCell>
                                 <TableCell className="text-right py-3">{formatCurrency(-expenseTotals.current)}</TableCell>
-                                <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(-expenseTotals.prior)}</TableCell>
+                                {showComparative && <TableCell className="text-right py-3 text-muted-foreground">{formatCurrency(-expenseTotals.prior)}</TableCell>}
                             </TableRow>
 
                             {/* NET INCOME */}
@@ -296,7 +481,7 @@ export default function ProfitLossPage() {
                             )}>
                                 <TableCell className="py-6">NET INCOME</TableCell>
                                 <TableCell className="text-right py-6">{formatCurrency(netIncome.current)}</TableCell>
-                                <TableCell className="text-right py-6 opacity-60">{formatCurrency(netIncome.prior)}</TableCell>
+                                {showComparative && <TableCell className="text-right py-6 opacity-60">{formatCurrency(netIncome.prior)}</TableCell>}
                             </TableRow>
                         </TableBody>
                     </Table>

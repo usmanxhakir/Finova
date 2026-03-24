@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Printer, Search, X, Info } from 'lucide-react'
+import { Printer, Search, X, Info, FileText, FileSpreadsheet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
+import { reportExport } from '@/lib/report-export'
+import { ReportHeader } from '@/components/reports/ReportHeader'
+import { createClient } from '@/lib/supabase/client'
 
 type TransactionDetails = {
     id: string
@@ -36,6 +39,16 @@ export default function TransactionListClient({
     }
 }) {
     const router = useRouter()
+    const supabase = createClient()
+    const [companySettings, setCompanySettings] = useState<any>(null)
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            const { data } = await supabase.from('company_settings').select('*').single()
+            if (data) setCompanySettings(data)
+        }
+        fetchSettings()
+    }, [])
 
     // Filters
     const [startDate, setStartDate] = useState(
@@ -152,7 +165,6 @@ export default function TransactionListClient({
             default: return 'bg-gray-100 text-gray-800'
         }
     }
-
     const getStatusBadgeVariant = (status: string) => {
         switch (status) {
             case 'paid': return 'success'
@@ -166,20 +178,50 @@ export default function TransactionListClient({
         }
     }
 
+    const handlePdfExport = () => {
+        const headers = ['Date', 'Type', 'Reference', 'Contact', 'Account', 'Amount', 'Status']
+        const rows = filteredTransactions.map(t => [
+            formatDate(t.date),
+            t.type,
+            t.reference,
+            t.contactName,
+            t.accountName,
+            formatCurrency(t.amount),
+            t.status
+        ])
+
+        reportExport.toPDF({
+            title: 'Transaction List',
+            companyName: companySettings?.name || 'Finova',
+            dateRange: `${formatDate(startDate)} to ${formatDate(endDate)}`,
+            headers,
+            rows,
+            filename: 'Transaction-Report'
+        })
+    }
+
+    const handleExcelExport = () => {
+        const exportData = filteredTransactions.map(t => ({
+            Date: t.date,
+            Type: t.type,
+            Reference: t.reference,
+            Contact: t.contactName,
+            Account: t.accountName,
+            Amount: t.amount,
+            Status: t.status
+        }))
+
+        reportExport.toExcel(exportData, 'Transaction-Report')
+    }
+
     return (
         <div className="flex flex-col gap-6 p-6 print:p-0">
-            {/* Header */}
-            <div className="flex justify-between items-start print:mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Transaction List</h1>
-                    <p className="text-muted-foreground">
-                        All financial transactions for {startDate && endDate ? `${formatDate(startDate)} to ${formatDate(endDate)}` : 'all time'}
-                    </p>
-                </div>
-                <Button variant="outline" onClick={() => window.print()} className="print:hidden">
-                    <Printer className="mr-2 h-4 w-4" /> Print
-                </Button>
-            </div>
+            <ReportHeader
+                title="Transaction List"
+                description={`All financial transactions for ${startDate && endDate ? `${formatDate(startDate)} to ${formatDate(endDate)}` : 'all time'}`}
+                onPdf={handlePdfExport}
+                onExcel={handleExcelExport}
+            />
 
             {/* Drill-down Info Banner */}
             {preAppliedFilters?.accountId && (

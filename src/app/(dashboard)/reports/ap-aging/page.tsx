@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ReportHeader } from '@/components/reports/ReportHeader'
+import { reportExport } from '@/lib/report-export'
 import {
     Table,
     TableBody,
@@ -50,6 +51,15 @@ export default function APAgingPage() {
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<AgingVendor[]>([])
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+    const [companySettings, setCompanySettings] = useState<any>(null)
+
+    useEffect(() => {
+        const fetchSettings = async () => {
+            const { data } = await supabase.from('company_settings').select('*').single()
+            if (data) setCompanySettings(data)
+        }
+        fetchSettings()
+    }, [])
 
     const loadData = async () => {
         setLoading(true)
@@ -140,12 +150,74 @@ export default function APAgingPage() {
         }
     }
 
+    const handlePdfExport = () => {
+        const headers = ['Vendor', 'Current', '1-30', '31-60', '61-90', '90+', 'Total']
+        const rows: any[][] = []
+
+        data.forEach(vendor => {
+            rows.push([
+                vendor.contactName,
+                formatCurrency(vendor.current),
+                formatCurrency(vendor['1-30']),
+                formatCurrency(vendor['31-60']),
+                formatCurrency(vendor['61-90']),
+                formatCurrency(vendor['90+']),
+                formatCurrency(vendor.total)
+            ])
+        })
+
+        rows.push([
+            { content: 'TOTAL', styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals.current), styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals['1-30']), styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals['31-60']), styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals['61-90']), styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals['90+']), styles: { fontStyle: 'bold' } },
+            { content: formatCurrency(totals.total), styles: { fontStyle: 'bold', textColor: [67, 56, 202] } }
+        ])
+
+        reportExport.toPDF({
+            title: 'A/P Aging Summary',
+            companyName: companySettings?.name || 'Finova',
+            dateRange: `As of ${format(asOfDate, 'MMMM dd, yyyy')}`,
+            headers,
+            rows,
+            filename: 'AP-Aging-Report'
+        })
+    }
+
+    const handleExcelExport = () => {
+        const exportData = data.map(vendor => ({
+            Vendor: vendor.contactName,
+            Current: vendor.current,
+            '1-30 Days': vendor['1-30'],
+            '31-60 Days': vendor['31-60'],
+            '61-90 Days': vendor['61-90'],
+            '90+ Days': vendor['90+'],
+            Total: vendor.total
+        }))
+
+        // Add totals row
+        exportData.push({
+            Vendor: 'TOTAL',
+            Current: totals.current,
+            '1-30 Days': totals['1-30'],
+            '31-60 Days': totals['31-60'],
+            '61-90 Days': totals['61-90'],
+            '90+ Days': totals['90+'],
+            Total: totals.total
+        })
+
+        reportExport.toExcel(exportData, 'AP-Aging-Report')
+    }
+
     return (
         <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto">
             <ReportHeader
                 title="A/P Aging Report"
                 description="Summary of outstanding vendor bills grouped by age."
-                onExport={() => toast.info('Export coming soon')}
+                onPdf={handlePdfExport}
+                onExcel={handleExcelExport}
             />
 
             <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg print:hidden">

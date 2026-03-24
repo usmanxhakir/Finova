@@ -71,7 +71,7 @@ export const reportExport = {
             margin: { top: 45 },
             didDrawPage: (data) => {
                 // Footer
-                const str = 'Page ' + doc.internal.getNumberOfPages()
+                const str = 'Page ' + doc.getNumberOfPages()
                 doc.setFontSize(10)
                 const pageSize = doc.internal.pageSize
                 const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight()

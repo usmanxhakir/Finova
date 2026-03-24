@@ -31,6 +31,10 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
     const invoice = invoiceData as any
 
     if (invoiceError || !invoice) {
+<<<<<<< Updated upstream
+=======
+        // Postgres unique-constraint violation code is '23505'
+>>>>>>> Stashed changes
         if (invoiceError?.code === '23505') {
             return { success: false, errorCode: 'DUPLICATE_NUMBER' }
         }

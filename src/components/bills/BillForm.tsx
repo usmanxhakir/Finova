@@ -194,6 +194,7 @@ export function BillForm({
         }
     }
 
+<<<<<<< Updated upstream
     const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
         try {
             setIsSubmitting(true)
@@ -206,9 +207,22 @@ export function BillForm({
             }
         } finally {
             setIsSubmitting(false)
+=======
+   const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
+    try {
+        setIsSubmitting(true)
+        await onSave(values, isFinalize)
+    } catch (error: any) {
+        if (error.message === 'DUPLICATE_NUMBER') {
+            setShowDuplicateDialog(true)
+        } else {
+            toast.error(error.message || 'Failed to save bill')
+>>>>>>> Stashed changes
         }
+    } finally {
+        setIsSubmitting(false)
     }
-
+}
     // Filter expense related accounts
     const expenseAccounts = accounts.filter(a => a.type === 'expense' || a.type === 'cost_of_goods_sold' || a.type === 'asset' || a.type === 'liability')
 
@@ -530,6 +544,7 @@ export function BillForm({
                 </AlertDialogContent>
             </AlertDialog>
             <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+<<<<<<< Updated upstream
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Bill Number Already Exists</AlertDialogTitle>
@@ -545,6 +560,23 @@ export function BillForm({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+=======
+    <AlertDialogContent>
+        <AlertDialogHeader>
+            <AlertDialogTitle>Bill Number Already Exists</AlertDialogTitle>
+            <AlertDialogDescription>
+                Bill number <strong>{form.getValues('number')}</strong> is already in use.
+                Please update the Bill # field to a unique number and try again.
+            </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowDuplicateDialog(false)}>
+                Got it
+            </AlertDialogAction>
+        </AlertDialogFooter>
+    </AlertDialogContent>
+</AlertDialog>
+>>>>>>> Stashed changes
         </>
     )
 }

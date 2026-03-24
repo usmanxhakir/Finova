@@ -205,6 +205,7 @@ export function InvoiceForm({
     }
 
     const onSubmit = async (values: InvoiceFormValues, isFinalize: boolean) => {
+<<<<<<< Updated upstream
         try {
             setIsSubmitting(true)
             await onSave(values, isFinalize)
@@ -216,8 +217,21 @@ export function InvoiceForm({
             }
         } finally {
             setIsSubmitting(false)
+=======
+    try {
+        setIsSubmitting(true)
+        await onSave(values, isFinalize)
+    } catch (error: any) {
+        if (error.message === 'DUPLICATE_NUMBER') {
+            setShowDuplicateDialog(true)
+        } else {
+            toast.error(error.message || 'Failed to save invoice')
+>>>>>>> Stashed changes
         }
+    } finally {
+        setIsSubmitting(false)
     }
+}
 
     return (
         <>
@@ -525,6 +539,7 @@ export function InvoiceForm({
                 </AlertDialogContent>
             </AlertDialog>
             <AlertDialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+<<<<<<< Updated upstream
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Invoice Number Already Exists</AlertDialogTitle>
@@ -540,6 +555,23 @@ export function InvoiceForm({
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+=======
+    <AlertDialogContent>
+        <AlertDialogHeader>
+            <AlertDialogTitle>Invoice Number Already Exists</AlertDialogTitle>
+            <AlertDialogDescription>
+                Invoice number <strong>{form.getValues('number')}</strong> is already in use.
+                Please update the Invoice # field to a unique number and try again.
+            </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setShowDuplicateDialog(false)}>
+                Got it
+            </AlertDialogAction>
+        </AlertDialogFooter>
+    </AlertDialogContent>
+</AlertDialog>
+>>>>>>> Stashed changes
         </>
     )
 }

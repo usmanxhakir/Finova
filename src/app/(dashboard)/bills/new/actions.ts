@@ -4,7 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
+<<<<<<< Updated upstream
 export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false, errorCode: string, message?: string } | void> {
+=======
+export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
+>>>>>>> Stashed changes
     const supabase = await createClient()
 
     // 1. Insert Bill
@@ -30,6 +34,10 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
     const bill = billData as any
 
     if (billError || !bill) {
+<<<<<<< Updated upstream
+=======
+        // Postgres unique-constraint violation code is '23505'
+>>>>>>> Stashed changes
         if (billError?.code === '23505') {
             return { success: false, errorCode: 'DUPLICATE_NUMBER' }
         }

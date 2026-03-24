@@ -53,6 +53,10 @@ export default function NewBillPage() {
 
     const onSave = async (values: any, isFinalize: boolean) => {
         const result = await handleSaveBill(values, isFinalize, settings)
+<<<<<<< Updated upstream
+=======
+        // handleSaveBill returns a result object on error, or void (then redirects) on success
+>>>>>>> Stashed changes
         if (result && result.success === false) {
             throw new Error(result.errorCode)
         }

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
+export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false, errorCode: string, message?: string } | void> {
     const supabase = await createClient()
 
     // 1. Insert Bill

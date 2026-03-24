@@ -194,20 +194,20 @@ export function BillForm({
         }
     }
 
-const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
-    try {
-        setIsSubmitting(true)
-        await onSave(values, isFinalize)
-    } catch (error: any) {
-        if (error.message === 'DUPLICATE_NUMBER') {
-            setShowDuplicateDialog(true)
-        } else {
-            toast.error(error.message || 'Failed to save bill')
+    const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
+        try {
+            setIsSubmitting(true)
+            await onSave(values, isFinalize)
+        } catch (error: any) {
+            if (error.message === 'DUPLICATE_NUMBER') {
+                setShowDuplicateDialog(true)
+            } else {
+                toast.error(error.message || 'Failed to save bill')
+            }
+        } finally {
+            setIsSubmitting(false)
         }
-    } finally {
-        setIsSubmitting(false)
     }
-}
 
     // Filter expense related accounts
     const expenseAccounts = accounts.filter(a => a.type === 'expense' || a.type === 'cost_of_goods_sold' || a.type === 'asset' || a.type === 'liability')

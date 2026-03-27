@@ -137,15 +137,18 @@ export default function BalanceSheetPage() {
     const isBalanced = Math.abs(diff) < 1
     const isUnbalanced = !isBalanced
 
-    const renderRows = (items: BSAccount[]) => {
+    const renderRows = (items: BSAccount[], hideEmpty?: boolean) => {
         const filtered = items.filter(a => Math.abs(a.balance) > 0)
-        if (filtered.length === 0) return (
-            <TableRow>
-                <TableCell colSpan={2} className="text-center py-4 text-muted-foreground text-sm italic border-none">
-                    No active accounts in this category.
-                </TableCell>
-            </TableRow>
-        )
+        if (filtered.length === 0) {
+            if (hideEmpty) return null
+            return (
+                <TableRow>
+                    <TableCell colSpan={2} className="text-center py-4 text-muted-foreground text-sm italic border-none">
+                        No active accounts in this category.
+                    </TableCell>
+                </TableRow>
+            )
+        }
 
         return filtered.map(acc => {
             const url = `/reports/transactions?account_id=${acc.id}&date_to=${format(asOfDate, 'yyyy-MM-dd')}&label=${encodeURIComponent(acc.name)}`
@@ -276,19 +279,6 @@ export default function BalanceSheetPage() {
                         </PopoverContent>
                     </Popover>
                 </div>
-
-                {!loading && (
-                    <Badge variant={isBalanced ? "secondary" : "destructive"} className={cn(
-                        "flex gap-1.5 py-1.5 px-4 font-bold text-sm",
-                        isBalanced ? "bg-green-100 text-green-700 hover:bg-green-100" : "animate-pulse"
-                    )}>
-                        {isBalanced ? (
-                            <>Balanced ✓</>
-                        ) : (
-                            <>Out of Balance ✗ ({formatCurrency(Math.abs(diff))})</>
-                        )}
-                    </Badge>
-                )}
             </div>
 
             {loading ? (
@@ -342,7 +332,7 @@ export default function BalanceSheetPage() {
                                     Equity
                                 </TableCell>
                             </TableRow>
-                            {renderRows(equity)}
+                            {renderRows(equity, true)}
                             <TableRow className="hover:bg-zinc-50/50 border-none">
                                 <TableCell className="pl-8 py-2 text-sm text-zinc-600 italic">Net Income / Retained Earnings</TableCell>
                                 <TableCell className="text-right py-2 tabular-nums font-medium">{formatCurrency(netIncomeValue)}</TableCell>
@@ -353,23 +343,12 @@ export default function BalanceSheetPage() {
                             </TableRow>
 
                             {/* L + E TOTAL */}
-                            <TableRow className="border-t-4 border-zinc-900 bg-zinc-900 text-white font-black uppercase tracking-tighter">
+                            <TableRow className="border-t-4 border-zinc-900 bg-zinc-900 hover:bg-zinc-900 text-white font-black uppercase tracking-tighter">
                                 <TableCell className="py-6 px-4">Total Liabilities + Equity</TableCell>
                                 <TableCell className="text-right py-6 px-4 font-black">{formatCurrency(totalLiabilities + totalEquity)}</TableCell>
                             </TableRow>
                         </TableBody>
                     </Table>
-
-                    <div className={cn(
-                        "mt-10 p-4 rounded-lg flex items-center justify-between print:hidden",
-                        isBalanced ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
-                    )}>
-                        <span className="font-bold uppercase tracking-widest text-[10px]">Status:</span>
-                        <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm tracking-tight">{isBalanced ? "Balanced ✓" : `Out of Balance ✗ (${formatCurrency(Math.abs(diff))})`}</span>
-                            <div className={cn("h-2.5 w-2.5 rounded-full", isBalanced ? "bg-green-500" : "bg-red-500 animate-pulse")} />
-                        </div>
-                    </div>
                 </div>
             )}
         </div>

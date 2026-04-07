@@ -18,6 +18,8 @@ export async function POST(
             .select('*')
             .eq('account_id', accountId)
             .eq('status', 'in_progress')
+            .order('created_at', { ascending: false })
+            .limit(1)
             .maybeSingle();
 
         if (fetchError) throw fetchError;

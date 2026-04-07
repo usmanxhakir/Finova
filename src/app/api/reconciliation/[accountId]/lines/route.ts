@@ -27,8 +27,7 @@ export async function GET(
                     reference
                 )
             `)
-            .eq('account_id', accountId)
-            .order('journal_entries.date', { ascending: false });
+            .eq('account_id', accountId);
 
         if (clearedParam === 'true') {
             query = query.eq('is_cleared', true);
@@ -40,7 +39,13 @@ export async function GET(
 
         if (error) throw error;
 
-        return NextResponse.json(data);
+        const sorted = (data || []).sort((a: any, b: any) => {
+            const dateA = a.journal_entries?.date ?? '';
+            const dateB = b.journal_entries?.date ?? '';
+            return dateB.localeCompare(dateA);
+        });
+
+        return NextResponse.json(sorted);
 
     } catch (error: any) {
         console.error('Error in reconciliation lines API:', error);

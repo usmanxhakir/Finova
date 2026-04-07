@@ -559,6 +559,8 @@ export interface Database {
                     description: string | null
                     debit: number
                     credit: number
+                    is_cleared: boolean
+                    reconciliation_id: string | null
                 }
                 Insert: {
                     id?: string
@@ -569,6 +571,8 @@ export interface Database {
                     description?: string | null
                     debit?: number
                     credit?: number
+                    is_cleared?: boolean
+                    reconciliation_id?: string | null
                 }
                 Update: {
                     id?: string
@@ -579,6 +583,52 @@ export interface Database {
                     description?: string | null
                     debit?: number
                     credit?: number
+                    is_cleared?: boolean
+                    reconciliation_id?: string | null
+                }
+            }
+            reconciliations: {
+                Row: {
+                    id: string
+                    account_id: string
+                    statement_date: string
+                    statement_ending_balance: number
+                    book_balance_at_date: number
+                    cleared_balance: number
+                    difference: number
+                    status: 'in_progress' | 'completed'
+                    completed_at: string | null
+                    notes: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    account_id: string
+                    statement_date: string
+                    statement_ending_balance: number
+                    book_balance_at_date?: number
+                    cleared_balance?: number
+                    difference?: number
+                    status?: 'in_progress' | 'completed'
+                    completed_at?: string | null
+                    notes?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    account_id?: string
+                    statement_date?: string
+                    statement_ending_balance?: number
+                    book_balance_at_date?: number
+                    cleared_balance?: number
+                    difference?: number
+                    status?: 'in_progress' | 'completed'
+                    completed_at?: string | null
+                    notes?: string | null
+                    created_at?: string
+                    updated_at?: string
                 }
             }
         }
@@ -589,6 +639,18 @@ export interface Database {
             get_user_role: {
                 Args: Record<PropertyKey, never>
                 Returns: Database['public']['Enums']['user_role']
+            }
+            complete_reconciliation: {
+                Args: {
+                    p_reconciliation_id: string
+                    p_cleared_line_ids: string[]
+                    p_cleared_balance: number
+                    p_book_balance: number
+                }
+                Returns: {
+                    id: string
+                    status: string
+                }
             }
         }
         Enums: {

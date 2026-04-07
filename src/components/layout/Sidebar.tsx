@@ -16,8 +16,11 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronDown,
+    ArrowRightLeft,
+    ClipboardList,
+    Landmark,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
@@ -41,6 +44,24 @@ export function Sidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
     const [reportsExpanded, setReportsExpanded] = useState(false);
+
+    // Dynamic badge for reconciliation
+    const [hasUnreconciled, setHasUnreconciled] = useState(false);
+
+    useEffect(() => {
+        async function checkUnreconciled() {
+            try {
+                const res = await fetch('/api/reconciliation/accounts');
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    setHasUnreconciled(data.some((a: any) => a.unreconciled_count > 0));
+                }
+            } catch (err) {
+                console.error('Failed to check unreconciled accounts', err);
+            }
+        }
+        checkUnreconciled();
+    }, []);
 
     return (
         <aside
@@ -128,6 +149,51 @@ export function Sidebar() {
                         />
                         {!collapsed && <span className="ml-3">Chart of Accounts</span>}
                     </Link>
+
+                    <Link
+                        href="/journal-entries"
+                        className={cn(
+                            "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                            pathname === "/journal-entries" || pathname.startsWith("/journal-entries/")
+                                ? "bg-violet-50 text-[#6d28d9] border border-violet-100/50"
+                                : "text-zinc-600 hover:bg-violet-50/50 hover:text-[#7c3aed]",
+                            collapsed && "justify-center px-2"
+                        )}
+                        title={collapsed ? "Journal Entries" : ""}
+                    >
+                        <ClipboardList
+                            size={20}
+                            className={cn(
+                                (pathname === "/journal-entries" || pathname.startsWith("/journal-entries/")) ? "text-[#6d28d9]" : "text-zinc-500"
+                            )}
+                        />
+                        {!collapsed && <span className="ml-3">Journal Entries</span>}
+                    </Link>
+
+                    <Link
+                        href="/banking"
+                        className={cn(
+                            "flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors relative",
+                            pathname === "/banking" || pathname.startsWith("/banking/")
+                                ? "bg-violet-50 text-[#6d28d9] border border-violet-100/50"
+                                : "text-zinc-600 hover:bg-violet-50/50 hover:text-[#7c3aed]",
+                            collapsed && "justify-center px-2"
+                        )}
+                        title={collapsed ? "Banking" : ""}
+                    >
+                        <div className="relative">
+                            <Landmark
+                                size={20}
+                                className={cn(
+                                    (pathname === "/banking" || pathname.startsWith("/banking/")) ? "text-[#6d28d9]" : "text-zinc-500"
+                                )}
+                            />
+                            {hasUnreconciled && (
+                                <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-rose-500" />
+                            )}
+                        </div>
+                        {!collapsed && <span className="ml-3">Banking</span>}
+                    </Link>
                 </div>
 
                 {/* Reports Accordion */}
@@ -137,43 +203,46 @@ export function Sidebar() {
                             Analysis
                         </p>
                     )}
-                    <button
-                        onClick={() => {
-                            if (collapsed) {
-                                setCollapsed(false);
-                                setReportsExpanded(true);
-                            } else {
-                                setReportsExpanded(!reportsExpanded);
-                            }
-                        }}
-                        className={cn(
-                            "flex w-full items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            (pathname === "/reports" || pathname.startsWith("/reports/"))
-                                ? "bg-violet-50 text-[#6d28d9] border border-violet-100/50"
-                                : "text-zinc-600 hover:bg-violet-50/50 hover:text-[#7c3aed]",
-                            collapsed && "justify-center px-2"
-                        )}
-                        title={collapsed ? "Reports" : ""}
-                    >
-                        <BarChart3
-                            size={20}
+                    <div className="flex w-full items-center">
+                        <Link
+                            href="/reports"
                             className={cn(
-                                (pathname === "/reports" || pathname.startsWith("/reports/")) ? "text-[#6d28d9]" : "text-zinc-500"
+                                "flex flex-1 items-center rounded-l-lg px-3 py-2 text-sm font-medium transition-all",
+                                (pathname === "/reports" || pathname.startsWith("/reports/"))
+                                    ? "bg-violet-50 text-[#6d28d9] border-y border-l border-violet-100/50"
+                                    : "text-zinc-600 hover:bg-violet-50/50 hover:text-[#7c3aed]",
+                                collapsed && "justify-center px-2 rounded-lg border-y border-x"
                             )}
-                        />
+                            title={collapsed ? "Reports" : ""}
+                        >
+                            <BarChart3
+                                size={20}
+                                className={cn(
+                                    (pathname === "/reports" || pathname.startsWith("/reports/")) ? "text-[#6d28d9]" : "text-zinc-500"
+                                )}
+                            />
+                            {!collapsed && <span className="ml-3 flex-1 text-left">Reports</span>}
+                        </Link>
                         {!collapsed && (
-                            <>
-                                <span className="ml-3 flex-1 text-left">Reports</span>
+                            <button
+                                onClick={() => setReportsExpanded(!reportsExpanded)}
+                                className={cn(
+                                    "flex items-center justify-center rounded-r-lg px-3 py-2 transition-all border-y border-r border-transparent",
+                                    (pathname === "/reports" || pathname.startsWith("/reports/"))
+                                        ? "bg-violet-50 text-[#6d28d9] border-violet-100/50"
+                                        : "text-zinc-500 hover:bg-violet-50/50 hover:text-[#7c3aed]"
+                                )}
+                            >
                                 <ChevronDown
                                     size={16}
                                     className={cn(
-                                        "transition-transform duration-200 text-zinc-500",
+                                        "transition-transform duration-200",
                                         reportsExpanded ? "rotate-180" : ""
                                     )}
                                 />
-                            </>
+                            </button>
                         )}
-                    </button>
+                    </div>
                     {!collapsed && reportsExpanded && (
                         <div className="mt-1 space-y-1 w-full">
                             {reportSubItems.map((item) => {

@@ -49,7 +49,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils'
-import { handleSaveExpense, handleDeleteExpense } from '@/app/(dashboard)/expenses/actions'
+import { handleSaveExpense, handleDeleteExpense } from '@/app/(app)/expenses/actions'
 import { toast } from 'sonner'
 
 const expenseSchema = z.object({

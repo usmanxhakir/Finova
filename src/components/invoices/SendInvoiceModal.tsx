@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
-import { handleSendInvoice } from '@/app/(dashboard)/invoices/[id]/actions'
+import { handleSendInvoice } from '@/app/(app)/invoices/[id]/actions'
 
 interface SendInvoiceModalProps {
     invoice: any

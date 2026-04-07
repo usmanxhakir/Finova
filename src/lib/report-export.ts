@@ -9,6 +9,7 @@ export interface ExportPdfOptions {
     headers: string[]
     rows: any[][]
     filename: string
+    orientation?: 'portrait' | 'landscape'
 }
 
 export const reportExport = {
@@ -28,8 +29,8 @@ export const reportExport = {
      * Export data to PDF with professional styling
      */
     toPDF: (options: ExportPdfOptions) => {
-        const { title, companyName, dateRange, headers, rows, filename } = options
-        const doc = new jsPDF('p', 'mm', 'a4')
+        const { title, companyName, dateRange, headers, rows, filename, orientation = 'portrait' } = options
+        const doc = new jsPDF(orientation === 'landscape' ? 'l' : 'p', 'mm', 'a4')
 
         // Header Section
         doc.setFontSize(18)
@@ -46,7 +47,8 @@ export const reportExport = {
 
         // Divider
         doc.setDrawColor(200, 200, 200)
-        doc.line(14, 40, 196, 40)
+        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth()
+        doc.line(14, 40, pageWidth - 14, 40)
 
         // Table
         autoTable(doc, {

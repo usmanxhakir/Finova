@@ -31,9 +31,9 @@ export async function POST(req: Request) {
             p_payment_method: validated.payment_method,
             p_account_id: validated.account_id,
             p_allocations: validated.allocations,
-            p_reference: validated.reference,
-            p_notes: validated.notes
-        }).returns<string>()
+            p_reference: validated.reference || null,
+            p_notes: validated.notes || null,
+        } as any).returns<string>()
 
         if (error) throw error
 

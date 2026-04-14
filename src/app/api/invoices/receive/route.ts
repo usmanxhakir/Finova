@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
 const allocationSchema = z.object({
@@ -34,15 +33,15 @@ export async function POST(req: Request) {
             p_allocations: validated.allocations,
             p_reference: validated.reference,
             p_notes: validated.notes
-        })
+        }).returns<string>()
 
         if (error) throw error
 
-        return NextResponse.json({ payment_id: data })
+        return Response.json({ payment_id: data })
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json({ error: error.errors }, { status: 400 })
+            return Response.json({ error: error.errors }, { status: 400 })
         }
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return Response.json({ error: error.message }, { status: 500 })
     }
 }

@@ -25,7 +25,9 @@ export async function GET() {
       contact_id,
       contacts ( name )
     `)
-    .in('status', ['unpaid', 'partially_paid'])
+    .neq('status', 'draft')
+    .neq('status', 'paid')
+    .neq('status', 'void')
     .gt('balance', 0)
     .order('due_date', { ascending: true })
     .returns<BillWithContact[]>()

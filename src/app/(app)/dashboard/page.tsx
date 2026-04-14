@@ -1,11 +1,9 @@
 
 import { createClient } from '@/lib/supabase/server'
-import { formatCurrency } from '@/lib/utils'
 import { DashboardKPIs } from '@/components/dashboard/DashboardKPIs'
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts'
 import { DashboardRecentActivity } from '@/components/dashboard/DashboardRecentActivity'
-import { DashboardActions } from '@/components/dashboard/DashboardActions'
-import { startOfMonth, endOfMonth, subMonths, format, startOfMinute } from 'date-fns'
+import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 
 export default async function DashboardPage() {
     const supabase = await createClient()
@@ -118,12 +116,6 @@ export default async function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5)
 
-    // 5. Fetch Accounts for Quick Action (Expense Sheet)
-    const { data: activeAccounts } = await supabase
-        .from('accounts')
-        .select('id, name, code, type, sub_type')
-        .eq('is_active', true)
-
     return (
         <div className="flex flex-col gap-8 p-8 max-w-7xl mx-auto">
             <div className="flex justify-between items-center">
@@ -131,7 +123,6 @@ export default async function DashboardPage() {
                     <h1 className="text-4xl font-black tracking-tight text-zinc-900">Dashboard</h1>
                     <p className="text-zinc-500 mt-1 font-medium">Financial overview and key performance indicators.</p>
                 </div>
-                <DashboardActions accounts={activeAccounts || []} />
             </div>
 
             <DashboardKPIs

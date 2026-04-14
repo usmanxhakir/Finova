@@ -19,7 +19,14 @@ import {
     ArrowRightLeft,
     ClipboardList,
     Landmark,
+    Plus,
 } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -94,6 +101,54 @@ export function Sidebar() {
                 >
                     {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
                 </Button>
+            </div>
+            <div className="p-4">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button 
+                            className={cn(
+                                "w-full justify-start gap-2 bg-[#7c3aed] hover:bg-[#6d28d9] text-white shadow-lg shadow-violet-200/50 transition-all duration-300",
+                                collapsed ? "px-0 justify-center h-10 w-10 mx-auto rounded-full" : "h-11 px-4 rounded-xl"
+                            )}
+                        >
+                            <Plus size={collapsed ? 22 : 18} className={cn("transition-transform", collapsed ? "" : "mr-1")} />
+                            {!collapsed && <span className="font-semibold text-sm">New</span>}
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={collapsed ? "center" : "start"} className="w-56 p-2 rounded-xl border-violet-100 shadow-xl" side={collapsed ? "right" : "bottom"}>
+                        <Link href="/invoices/new">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <FileText className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>New Invoice</span>
+                            </DropdownMenuItem>
+                        </Link>
+                        <Link href="/bills/new">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <Receipt className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>New Bill</span>
+                            </DropdownMenuItem>
+                        </Link>
+                        <Link href="/expenses">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <CreditCard className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>New Expense</span>
+                            </DropdownMenuItem>
+                        </Link>
+                        <div className="h-px bg-zinc-100 my-1 mx-1" />
+                        <Link href="/pay-bills">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <ArrowRightLeft className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>Pay Bills</span>
+                            </DropdownMenuItem>
+                        </Link>
+                        <Link href="/receive-payments">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <Landmark className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>Receive Payment</span>
+                            </DropdownMenuItem>
+                        </Link>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
 
             <nav className="flex-1 space-y-1 p-2 overflow-y-auto w-full">

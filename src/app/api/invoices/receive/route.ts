@@ -40,7 +40,7 @@ export async function POST(req: Request) {
         return Response.json({ payment_id: data })
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return Response.json({ error: error.errors }, { status: 400 })
+            return Response.json({ error: error.issues }, { status: 400 })
         }
         return Response.json({ error: error.message }, { status: 500 })
     }

@@ -1,19 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { Database } from '@/types/database.types'
+import { NextRequest } from 'next/server'
 
 type BillRow = Database['public']['Tables']['bills']['Row']
 type ContactRow = Database['public']['Tables']['contacts']['Row']
 
 // We add 'balance' to the type definition because it may not yet be in the generated types
 type BillWithContact = BillRow & {
-  balance: number
+  amount_due: number
   contacts: Pick<ContactRow, 'name'> | null
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const supabase = await createClient()
+  const { searchParams } = new URL(req.url)
+  const contactId = searchParams.get('contactId')
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('bills')
     .select(`
       id,
@@ -21,16 +24,19 @@ export async function GET() {
       issue_date,
       due_date,
       total,
-      balance,
+      amount_due,
       contact_id,
       contacts ( name )
     `)
-    .neq('status', 'draft')
-    .neq('status', 'paid')
-    .neq('status', 'void')
-    .gt('balance', 0)
+    .in('status', ['received', 'partially_paid', 'overdue'])
+    .gt('amount_due', 0)
     .order('due_date', { ascending: true })
-    .returns<BillWithContact[]>()
+
+  if (contactId && contactId !== 'undefined' && contactId !== 'null') {
+    query = query.eq('contact_id', contactId)
+  }
+
+  const { data, error } = await query.returns<BillWithContact[]>()
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 })
@@ -42,7 +48,7 @@ export async function GET() {
     issue_date: bill.issue_date,
     due_date: bill.due_date,
     total: bill.total,
-    balance: bill.balance,
+    balance: bill.amount_due,
     contact_id: bill.contact_id,
     contact_name: bill.contacts?.name || '',
   }))

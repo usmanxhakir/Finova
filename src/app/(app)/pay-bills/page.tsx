@@ -10,7 +10,7 @@ export default async function PayBillsPage() {
 
     const [
         { data: accounts },
-        { data: bills }
+        { data: vendors }
     ] = await Promise.all([
         supabase
             .from('accounts')
@@ -18,16 +18,17 @@ export default async function PayBillsPage() {
             .in('sub_type', ['bank', 'cash', 'credit_card'])
             .eq('is_active', true)
             .order('name'),
-        // We can fetch initial bills here or let the client fetch them. 
-        // User requested: "Server component: fetch open bills and accounts"
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/bills/open`, { cache: 'no-store' })
-            .then(res => res.json())
-            .catch(() => [])
+        supabase
+            .from('contacts')
+            .select('id, name')
+            .in('type', ['vendor', 'both'])
+            .eq('is_active', true)
+            .order('name')
     ])
 
     return (
         <PayBillsClient 
-            initialBills={bills || []} 
+            vendors={vendors || []} 
             accounts={accounts || []} 
         />
     )

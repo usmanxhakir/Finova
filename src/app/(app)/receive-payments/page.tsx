@@ -10,7 +10,7 @@ export default async function ReceivePaymentsPage() {
 
     const [
         { data: accounts },
-        { data: invoices }
+        { data: customers }
     ] = await Promise.all([
         supabase
             .from('accounts')
@@ -18,14 +18,17 @@ export default async function ReceivePaymentsPage() {
             .in('sub_type', ['bank', 'cash'])
             .eq('is_active', true)
             .order('name'),
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/invoices/open`, { cache: 'no-store' })
-            .then(res => res.json())
-            .catch(() => [])
+        supabase
+            .from('contacts')
+            .select('id, name')
+            .in('type', ['customer', 'both'])
+            .eq('is_active', true)
+            .order('name')
     ])
 
     return (
         <ReceivePaymentsClient 
-            initialInvoices={invoices || []} 
+            customers={customers || []} 
             accounts={accounts || []} 
         />
     )

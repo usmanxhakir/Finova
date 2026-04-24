@@ -42,6 +42,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Database } from "@/types/database.types";
 import { useEffect, useState } from "react";
+import { useUserRole } from "@/hooks/useUserRole";
 
 type Item = Database["public"]["Tables"]["items"]["Row"];
 type Account = Database["public"]["Tables"]["accounts"]["Row"];
@@ -69,6 +70,7 @@ interface ItemSheetProps {
 
 export function ItemSheet({ open, onOpenChange, item, accounts, onSuccess }: ItemSheetProps) {
     const supabase = createClient();
+    const { companyId } = useUserRole();
     const isEditing = !!item;
 
     const form = useForm<ItemFormValues>({
@@ -128,7 +130,7 @@ export function ItemSheet({ open, onOpenChange, item, accounts, onSuccess }: Ite
                 toast.success("Item updated successfully");
             } else {
                 const { error } = await (supabase.from("items") as any)
-                    .insert([dataToSave] as any);
+                    .insert([{ ...dataToSave, company_id: companyId }] as any);
 
                 if (error) throw error;
                 toast.success("Item created successfully");

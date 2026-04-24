@@ -75,7 +75,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     supabase.from('contacts').select('id, name').in('type', ['customer', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
-                    supabase.from('company_settings').select('*').single(),
+                    supabase.from('companies').select('*').single(),
                     supabase.from('accounts').select('id, name, code').in('sub_type', ['bank', 'cash']).eq('is_active', true)
                 ])
 

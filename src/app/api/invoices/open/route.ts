@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { Database } from '@/types/database.types'
 import { NextRequest } from 'next/server'
 
@@ -13,6 +14,7 @@ type InvoiceWithContact = InvoiceRow & {
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
+  const companyId = await getCompanyId()
   const { searchParams } = new URL(req.url)
   const contactId = searchParams.get('contactId')
 
@@ -28,6 +30,7 @@ export async function GET(req: NextRequest) {
       contact_id,
       contacts ( name )
     `)
+    .eq('company_id', companyId)
     .in('status', ['sent', 'partially_paid', 'overdue'])
     .gt('amount_due', 0)
     .order('due_date', { ascending: true })

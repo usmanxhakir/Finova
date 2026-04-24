@@ -1,12 +1,14 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry, voidBillJournalEntries, createBillPaymentJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleUpdateBill(id: string, values: any, isFinalize: boolean, currentStatus: string, currentAmountDue: number) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // 1. Update Bill
     const { error: billUpdateError } = await (supabase.from('bills') as any)
@@ -32,6 +34,7 @@ export async function handleUpdateBill(id: string, values: any, isFinalize: bool
     await (supabase.from('bill_line_items') as any).delete().eq('bill_id', id)
 
     const lineItems = values.line_items.map((item: any) => ({
+        company_id: companyId,
         bill_id: id,
         item_id: item.item_id || null,
         description: item.description,
@@ -47,7 +50,7 @@ export async function handleUpdateBill(id: string, values: any, isFinalize: bool
 
     // 3. Create Journal Entry if Finalized
     if (isFinalize && currentStatus !== 'received') {
-        await createBillJournalEntry(supabase, id)
+        await createBillJournalEntry(supabase, id, companyId)
     }
 
     revalidatePath(`/bills/${id}`)
@@ -56,6 +59,7 @@ export async function handleUpdateBill(id: string, values: any, isFinalize: bool
 
 export async function handleVoidBill(id: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     const { error: voidError } = await (supabase.from('bills') as any)
         .update({ status: 'void' })
@@ -63,7 +67,7 @@ export async function handleVoidBill(id: string) {
 
     if (voidError) throw new Error(`Failed to void bill: ${voidError.message}`)
 
-    await voidBillJournalEntries(supabase, id)
+    await voidBillJournalEntries(supabase, id, companyId)
 
     revalidatePath(`/bills/${id}`)
     revalidatePath('/bills')
@@ -72,6 +76,7 @@ export async function handleVoidBill(id: string) {
 
 export async function handleRecordBillPayment(id: string, values: any, contactId: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // Step 0: Fetch current bill state FIRST (all values in cents/integers)
     const { data: bill, error: fetchError } = await (supabase.from('bills') as any)
@@ -86,6 +91,7 @@ export async function handleRecordBillPayment(id: string, values: any, contactId
 
     const { data: paymentData, error: paymentError } = await (supabase.from('payments') as any)
         .insert({
+            company_id: companyId,
             type: 'bill_payment',
             contact_id: contactId,
             account_id: values.account_id,
@@ -103,6 +109,7 @@ export async function handleRecordBillPayment(id: string, values: any, contactId
 
     // Step 2: Create Allocation
     const { error: allocError } = await (supabase.from('payment_allocations') as any).insert({
+        company_id: companyId,
         payment_id: payment.id,
         bill_id: id,
         amount_applied: paymentAmountInCents,
@@ -134,7 +141,7 @@ export async function handleRecordBillPayment(id: string, values: any, contactId
     if (upError) throw new Error(`Failed to update bill: ${upError.message}`)
 
     // Step 5: Create Journal Entry
-    await createBillPaymentJournalEntry(supabase, payment.id)
+    await createBillPaymentJournalEntry(supabase, payment.id, companyId)
 
     // Step 6: Revalidate page cache
     revalidatePath('/bills')

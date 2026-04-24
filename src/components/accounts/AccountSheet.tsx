@@ -35,6 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Loader2, Lock } from 'lucide-react'
+import { useUserRole } from '@/hooks/useUserRole'
 
 const accountSchema = z.object({
     code: z.string().min(1, 'Account code is required'),
@@ -94,6 +95,7 @@ export function AccountSheet({
 }: AccountSheetProps) {
     const [loading, setLoading] = useState(false)
     const supabase = createClient()
+    const { companyId } = useUserRole()
     const isEdit = !!account
     const isSystem = account?.is_system
 
@@ -175,6 +177,7 @@ export function AccountSheet({
                 const { error } = await (supabase
                     .from('accounts') as any)
                     .insert({
+                        company_id: companyId,
                         code: values.code,
                         name: values.name,
                         type: values.type,

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createInvoiceJournalEntry, voidInvoiceJournalEntries, createPaymentJournalEntry } from '@/lib/accounting/journal-engine'
@@ -8,6 +9,7 @@ import { sendInvoiceEmail } from '@/lib/email/send-invoice'
 
 export async function handleSendInvoice(id: string, to: string, subject: string, personalMessage?: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // 1. Fetch data
     const { data: invoice } = await (supabase.from('invoices') as any)
@@ -15,8 +17,9 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
         .eq('id', id)
         .single()
 
-    const { data: settings } = await (supabase.from('company_settings') as any)
+    const { data: settings } = await (supabase.from('companies') as any)
         .select('*')
+        .eq('id', companyId)
         .single()
 
     if (!invoice || !settings) throw new Error('Invoice or settings not found')
@@ -35,7 +38,7 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
     if (invoice.status === 'draft') {
         updateData.status = 'sent'
         // If it was draft, we also need to create journal entry as it's now "finalized" by sending
-        await createInvoiceJournalEntry(supabase, id)
+        await createInvoiceJournalEntry(supabase, id, companyId)
     }
 
     const { error: updateError } = await (supabase.from('invoices') as any)
@@ -50,6 +53,7 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
 
 export async function handleUpdateInvoice(id: string, values: any, isFinalize: boolean, currentStatus: string, currentAmountDue: number) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // 1. Update Invoice
     const { error: invoiceUpdateError } = await (supabase.from('invoices') as any)
@@ -76,6 +80,7 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
     await (supabase.from('invoice_line_items') as any).delete().eq('invoice_id', id)
 
     const lineItems = values.line_items.map((item: any) => ({
+        company_id: companyId,
         invoice_id: id,
         item_id: item.item_id || null,
         description: item.description,
@@ -91,7 +96,7 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
 
     // 3. Create Journal Entry if Finalized
     if (isFinalize && currentStatus !== 'sent') {
-        await createInvoiceJournalEntry(supabase, id)
+        await createInvoiceJournalEntry(supabase, id, companyId)
     }
 
     revalidatePath(`/invoices/${id}`)
@@ -100,6 +105,7 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
 
 export async function handleVoidInvoice(id: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     const { error: voidError } = await (supabase.from('invoices') as any)
         .update({ status: 'void' })
@@ -107,7 +113,7 @@ export async function handleVoidInvoice(id: string) {
 
     if (voidError) throw new Error(`Failed to void invoice: ${voidError.message}`)
 
-    await voidInvoiceJournalEntries(supabase, id)
+    await voidInvoiceJournalEntries(supabase, id, companyId)
 
     revalidatePath(`/invoices/${id}`)
     revalidatePath('/invoices')
@@ -116,6 +122,7 @@ export async function handleVoidInvoice(id: string) {
 
 export async function handleRecordInvoicePayment(id: string, values: any, contactId: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // Step 0: Fetch current invoice state FIRST (all values in cents/integers)
     const { data: invoice, error: fetchError } = await (supabase.from('invoices') as any)
@@ -130,6 +137,7 @@ export async function handleRecordInvoicePayment(id: string, values: any, contac
 
     const { data: paymentData, error: paymentError } = await (supabase.from('payments') as any)
         .insert({
+            company_id: companyId,
             type: 'invoice_payment',
             contact_id: contactId,
             account_id: values.account_id,
@@ -147,6 +155,7 @@ export async function handleRecordInvoicePayment(id: string, values: any, contac
 
     // Step 2: Create Allocation
     const { error: allocError } = await (supabase.from('payment_allocations') as any).insert({
+        company_id: companyId,
         payment_id: payment.id,
         invoice_id: id,
         amount_applied: paymentAmountInCents,
@@ -178,7 +187,7 @@ export async function handleRecordInvoicePayment(id: string, values: any, contac
     if (upError) throw new Error(`Failed to update invoice: ${upError.message}`)
 
     // Step 5: Create Journal Entry
-    await createPaymentJournalEntry(supabase, payment.id)
+    await createPaymentJournalEntry(supabase, payment.id, companyId)
 
     // Step 6: Revalidate page cache
     revalidatePath('/invoices')

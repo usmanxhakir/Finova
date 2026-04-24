@@ -52,7 +52,7 @@ export default function ProfitLossPage() {
 
     useEffect(() => {
         const fetchSettings = async () => {
-            const { data } = await supabase.from('company_settings').select('*').single()
+            const { data } = await supabase.from('companies').select('*').single()
             if (data) setCompanySettings(data)
         }
         fetchSettings()

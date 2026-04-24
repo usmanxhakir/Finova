@@ -14,7 +14,7 @@ export function Header() {
 
     useEffect(() => {
         async function getCompany() {
-            const { data, error } = await (supabase.from("company_settings") as any)
+            const { data, error } = await (supabase.from("companies") as any)
                 .select("name")
                 .limit(1)
                 .single();

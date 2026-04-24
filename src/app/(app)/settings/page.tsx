@@ -14,7 +14,7 @@ export default async function SettingsPage() {
 
     // Fetch initial company settings
     const { data: companySettings } = await supabase
-        .from('company_settings')
+        .from('companies')
         .select('*')
         .single()
 

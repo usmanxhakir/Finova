@@ -3,9 +3,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { createExpenseJournalEntry } from '@/lib/accounting/journal-engine'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 
 export async function handleSaveExpense(formData: FormData) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     const id = formData.get('id') as string | null
     const date = formData.get('date') as string
@@ -39,6 +41,7 @@ export async function handleSaveExpense(formData: FormData) {
     }
 
     const expenseData = {
+        company_id: companyId,
         date,
         payee,
         expense_account_id,
@@ -72,7 +75,7 @@ export async function handleSaveExpense(formData: FormData) {
     // 2. Create Journal Entry
     if (resultId) {
         try {
-            await createExpenseJournalEntry(supabase, resultId)
+            await createExpenseJournalEntry(supabase, resultId, companyId)
         } catch (err: any) {
             console.error('Journal entry creation failed for expense:', err)
         }

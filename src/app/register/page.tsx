@@ -102,32 +102,56 @@ export default function RegisterPage() {
             }
         }
 
-        // 1. Create Profile
-        const { error: profileError } = await (supabase.from('profiles') as any).insert({
-            id: adminId,
-            full_name: step1Form.getValues().fullName,
-            role: 'admin',
-        })
-
-        if (profileError) {
-            toast.error('Error creating profile: ' + profileError.message)
-            setIsLoading(false)
-            return
-        }
-
-        // 2. Create Company Settings
-        const { error: companyError } = await (supabase.from('company_settings') as any).insert({
+        // 1. Create Company
+        const { data: company, error: companyError } = await (supabase.from('companies') as any).insert({
             name: values.companyName,
             email: values.companyEmail,
             phone: values.phone,
             address: values.address,
             logo_url: logoUrl,
-        })
+        }).select().single()
 
-        if (companyError) {
-            toast.error('Error creating company: ' + companyError.message)
+        if (companyError || !company) {
+            toast.error('Error creating company: ' + companyError?.message)
             setIsLoading(false)
             return
+        }
+
+        const companyId = company.id
+
+        // 2. Create Profile linked to Company
+        const { error: profileError } = await (supabase.from('profiles') as any).insert({
+            id: adminId,
+            full_name: step1Form.getValues().fullName,
+            role: 'admin',
+            company_id: companyId
+        })
+
+        if (profileError) {
+            toast.error('Error creating profile: ' + profileError.message)
+            // Cleanup company if profile fails? (Optional, but RLS might prevent further steps anyway)
+            setIsLoading(false)
+            return
+        }
+
+        // 3. Seed Default Chart of Accounts
+        const defaultAccounts = [
+            { company_id: companyId, code: '1100', name: 'Accounts Receivable', type: 'asset', sub_type: 'current_asset', is_active: true },
+            { company_id: companyId, code: '1200', name: 'Cash', type: 'asset', sub_type: 'cash', is_active: true },
+            { company_id: companyId, code: '1300', name: 'Main Bank Account', type: 'asset', sub_type: 'bank', is_active: true },
+            { company_id: companyId, code: '2100', name: 'Accounts Payable', type: 'liability', sub_type: 'current_liability', is_active: true },
+            { company_id: companyId, code: '3100', name: 'Retained Earnings', type: 'equity', sub_type: 'equity', is_active: true },
+            { company_id: companyId, code: '4100', name: 'Sales', type: 'revenue', sub_type: 'revenue', is_active: true },
+            { company_id: companyId, code: '5100', name: 'Cost of Goods Sold', type: 'expense', sub_type: 'cost_of_goods_sold', is_active: true },
+            { company_id: companyId, code: '6100', name: 'General Expenses', type: 'expense', sub_type: 'expense', is_active: true },
+            { company_id: companyId, code: '2200', name: 'Tax Payable', type: 'liability', sub_type: 'current_liability', is_active: true },
+        ]
+
+        const { error: coaError } = await (supabase.from('accounts') as any).insert(defaultAccounts)
+        
+        if (coaError) {
+            toast.error('Warning: Company created but failed to seed Chart of Accounts. You may need to add accounts manually.')
+            console.error('COA Seeding Error:', coaError)
         }
 
         toast.success('Onboarding complete!')

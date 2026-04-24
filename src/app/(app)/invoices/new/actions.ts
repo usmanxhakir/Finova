@@ -1,15 +1,18 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
 import { createInvoiceJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // 1. Insert Invoice
     const { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
         .insert({
+            company_id: companyId,
             number: values.number,
             contact_id: values.contact_id,
             issue_date: values.issue_date,
@@ -40,6 +43,7 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
 
     // 2. Insert Line Items
     const lineItems = values.line_items.map((item: any) => ({
+        company_id: companyId,
         invoice_id: invoice.id,
         item_id: item.item_id || null,
         description: item.description,
@@ -59,9 +63,9 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
         throw new Error(`Failed to create line items: ${linesError.message}`)
     }
 
-    // 3. Update next number in settings
+    // 3. Update next number in settings (now in companies table)
     if (settings?.id) {
-        await (supabase.from('company_settings') as any)
+        await (supabase.from('companies') as any)
             .update({ invoice_next_number: (settings.invoice_next_number || 1) + 1 })
             .eq('id', settings.id)
     }
@@ -69,7 +73,7 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
     // 4. Create Journal Entry if Finalized
     if (isFinalize) {
         try {
-            await createInvoiceJournalEntry(supabase, invoice.id)
+            await createInvoiceJournalEntry(supabase, invoice.id, companyId)
         } catch (err: any) {
             console.error('Journal entry creation failed:', err)
             // We keep the invoice but report the error

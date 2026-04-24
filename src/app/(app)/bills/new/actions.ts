@@ -1,15 +1,18 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false, errorCode: string, message?: string } | void> {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // 1. Insert Bill
     const { data: billData, error: billError } = await (supabase.from('bills') as any)
         .insert({
+            company_id: companyId,
             number: values.number,
             contact_id: values.contact_id,
             reference_number: values.reference_number,
@@ -39,6 +42,7 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
 
     // 2. Insert Line Items
     const lineItems = values.line_items.map((item: any) => ({
+        company_id: companyId,
         bill_id: bill.id,
         item_id: item.item_id || null,
         description: item.description,
@@ -58,9 +62,9 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
         throw new Error(`Failed to create line items: ${linesError.message}`)
     }
 
-    // 3. Update next number in settings
+    // 3. Update next number in settings (now in companies table)
     if (settings?.id) {
-        await (supabase.from('company_settings') as any)
+        await (supabase.from('companies') as any)
             .update({ bill_next_number: (settings.bill_next_number || 1) + 1 })
             .eq('id', settings.id)
     }
@@ -68,7 +72,7 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
     // 4. Create Journal Entry if Finalized
     if (isFinalize) {
         try {
-            await createBillJournalEntry(supabase, bill.id)
+            await createBillJournalEntry(supabase, bill.id, companyId)
         } catch (err: any) {
             console.error('Journal entry creation failed:', err)
             // We keep the bill but report the error

@@ -42,6 +42,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Database } from "@/types/database.types";
 import { useEffect } from "react";
+import { useUserRole } from "@/hooks/useUserRole";
 
 type Contact = Database["public"]["Tables"]["contacts"]["Row"];
 
@@ -72,6 +73,7 @@ interface ContactSheetProps {
 
 export function ContactSheet({ open, onOpenChange, contact, onSuccess }: ContactSheetProps) {
     const supabase = createClient();
+    const { companyId } = useUserRole();
     const isEditing = !!contact;
 
     const form = useForm<ContactFormValues>({
@@ -140,7 +142,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSuccess }: Contact
                 toast.success("Contact updated successfully");
             } else {
                 const { error } = await (supabase.from("contacts") as any)
-                    .insert([values] as any);
+                    .insert([{ ...values, company_id: companyId }] as any);
 
                 if (error) throw error;
                 toast.success("Contact created successfully");

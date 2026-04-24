@@ -87,7 +87,7 @@ export function CompanyTab({ initialSettings }: { initialSettings: any }) {
             
             // Auto-save logo URL
             const { error: updateError } = await (supabase
-                .from('company_settings') as any)
+                .from('companies') as any)
                 .update({ logo_url: publicUrl })
                 .eq('id', initialSettings.id)
 
@@ -103,7 +103,7 @@ export function CompanyTab({ initialSettings }: { initialSettings: any }) {
     async function handleRemoveLogo() {
         try {
             const { error } = await (supabase
-                .from('company_settings') as any)
+                .from('companies') as any)
                 .update({ logo_url: null })
                 .eq('id', initialSettings.id)
 
@@ -119,7 +119,7 @@ export function CompanyTab({ initialSettings }: { initialSettings: any }) {
         setLoading(true)
         try {
             const { error } = await (supabase
-                .from('company_settings') as any)
+                .from('companies') as any)
                 .update(values)
                 .eq('id', initialSettings.id)
 

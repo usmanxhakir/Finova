@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { getCompanyId } from '@/lib/supabase/get-company-id';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
@@ -10,6 +11,7 @@ export async function POST(
     const { statement_date, statement_ending_balance } = body;
 
     const supabase = await createClient();
+    const companyId = await getCompanyId();
 
     try {
         // 1. Check for existing in_progress reconciliation
@@ -32,6 +34,7 @@ export async function POST(
         const { data: newRecon, error: insertError } = await (supabase
             .from('reconciliations') as any)
             .insert({
+                company_id: companyId,
                 account_id: accountId,
                 statement_date: statement_date,
                 statement_ending_balance: statement_ending_balance,

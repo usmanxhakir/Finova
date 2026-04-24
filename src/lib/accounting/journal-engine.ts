@@ -19,7 +19,8 @@ type PaymentRecord = Database['public']['Tables']['payments']['Row']
  */
 export async function createInvoiceJournalEntry(
     supabase: SupabaseClient<Database>,
-    invoiceId: string
+    invoiceId: string,
+    companyId: string
 ) {
     // 1. Fetch invoice data with line items
     const { data: rawInvoice, error: invoiceError } = await (supabase
@@ -43,7 +44,7 @@ export async function createInvoiceJournalEntry(
         throw new Error(`Cannot create journal entry for invoice in status: ${invoice.status}`)
     }
 
-    // 2. Get system accounts
+    // 2. Get system accounts (scoped to this company via RLS)
     const { data: accounts, error: accountsError } = await (supabase
         .from('accounts') as any)
         .select('id, code')
@@ -60,6 +61,7 @@ export async function createInvoiceJournalEntry(
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
         .insert({
+            company_id: companyId,
             date: invoice.issue_date,
             reference: invoice.number,
             description: `Invoice ${invoice.number}`,
@@ -77,10 +79,11 @@ export async function createInvoiceJournalEntry(
     const jeId = (journalEntry as any).id
 
     // 4. Prepare lines
-    const lines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = []
+    const lines: any[] = []
 
     // Debit A/R for the total
     lines.push({
+        company_id: companyId,
         journal_entry_id: jeId,
         account_id: arAccountId,
         description: `Total for Invoice ${invoice.number}`,
@@ -91,6 +94,7 @@ export async function createInvoiceJournalEntry(
     // Credit revenue accounts for each line item
     invoice.invoice_line_items.forEach((item) => {
         lines.push({
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: item.account_id,
             description: item.description || `Line item for ${invoice.number}`,
@@ -110,6 +114,7 @@ export async function createInvoiceJournalEntry(
 
         if (taxAccount) {
             lines.push({
+                company_id: companyId,
                 journal_entry_id: jeId,
                 account_id: (taxAccount as any).id,
                 description: `Tax for Invoice ${invoice.number}`,
@@ -141,7 +146,8 @@ export async function createInvoiceJournalEntry(
 
 export async function voidInvoiceJournalEntries(
     supabase: SupabaseClient<Database>,
-    invoiceId: string
+    invoiceId: string,
+    companyId: string
 ) {
     // 1. Fetch all journal entries for the invoice
     const { data: existingEntries, error: fetchError } = await (supabase
@@ -191,6 +197,7 @@ export async function voidInvoiceJournalEntries(
         const { data: reversalEntry, error: reversalError } = await (supabase
             .from('journal_entries') as any)
             .insert({
+                company_id: companyId,
                 date: new Date().toISOString().split('T')[0],
                 reference: entry.reference,
                 description: `VOID REVERSAL: ${entry.description}`,
@@ -207,7 +214,8 @@ export async function voidInvoiceJournalEntries(
 
         const revEntryId = (reversalEntry as any).id
 
-        const reversalLines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = (lines as any[]).map(line => ({
+        const reversalLines: any[] = (lines as any[]).map(line => ({
+            company_id: companyId,
             journal_entry_id: revEntryId,
             account_id: line.account_id,
             description: `REVERSAL: ${line.description}`,
@@ -229,7 +237,7 @@ export async function voidInvoiceJournalEntries(
         .from('invoices') as any)
         .update({
             amount_paid: 0,
-            amount_due: 0, // Will be set to total in the next step if we fetch it, but let's be safe
+            amount_due: 0,
             status: 'void'
         })
         .eq('id', invoiceId)
@@ -247,7 +255,8 @@ export async function voidInvoiceJournalEntries(
 
 export async function createPaymentJournalEntry(
     supabase: SupabaseClient<Database>,
-    paymentId: string
+    paymentId: string,
+    companyId: string
 ) {
     const { data, error: paymentError } = await (supabase
         .from('payments') as any)
@@ -276,6 +285,7 @@ export async function createPaymentJournalEntry(
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
         .insert({
+            company_id: companyId,
             date: payment.date,
             reference: payment.reference,
             description: `Payment ${payment.reference || payment.id}`,
@@ -292,8 +302,9 @@ export async function createPaymentJournalEntry(
 
     const jeId = (journalEntry as any).id
 
-    const lines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = [
+    const lines: any[] = [
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: payment.account_id,
             description: `Payment received: ${payment.reference || ''}`,
@@ -301,6 +312,7 @@ export async function createPaymentJournalEntry(
             credit: 0
         },
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: arAccountId,
             description: `A/R reduction for payment: ${payment.reference || ''}`,
@@ -325,7 +337,8 @@ export async function createPaymentJournalEntry(
  */
 export async function createBillJournalEntry(
     supabase: SupabaseClient<Database>,
-    billId: string
+    billId: string,
+    companyId: string
 ) {
     // 1. Fetch bill data with line items
     const { data: rawBill, error: billError } = await (supabase
@@ -349,7 +362,7 @@ export async function createBillJournalEntry(
         throw new Error(`Cannot create journal entry for bill in status: ${bill.status}`)
     }
 
-    // 2. Get system accounts (Accounts Payable - 2100)
+    // 2. Get system accounts (Accounts Payable - 2100), scoped by RLS
     const { data: accounts, error: accountsError } = await (supabase
         .from('accounts') as any)
         .select('id, code')
@@ -366,6 +379,7 @@ export async function createBillJournalEntry(
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
         .insert({
+            company_id: companyId,
             date: bill.issue_date,
             reference: bill.number,
             description: `Bill ${bill.number}`,
@@ -383,11 +397,12 @@ export async function createBillJournalEntry(
     const jeId = (journalEntry as any).id
 
     // 4. Prepare lines
-    const lines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = []
+    const lines: any[] = []
 
     // Debit expense accounts for each line item
     bill.bill_line_items.forEach((item) => {
         lines.push({
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: item.account_id,
             description: item.description || `Line item for ${bill.number}`,
@@ -407,6 +422,7 @@ export async function createBillJournalEntry(
 
         if (taxAccount) {
             lines.push({
+                company_id: companyId,
                 journal_entry_id: jeId,
                 account_id: (taxAccount as any).id,
                 description: `Tax for Bill ${bill.number}`,
@@ -418,6 +434,7 @@ export async function createBillJournalEntry(
 
     // Credit A/P for the total
     lines.push({
+        company_id: companyId,
         journal_entry_id: jeId,
         account_id: apAccountId,
         description: `Total for Bill ${bill.number}`,
@@ -447,7 +464,8 @@ export async function createBillJournalEntry(
 
 export async function voidBillJournalEntries(
     supabase: SupabaseClient<Database>,
-    billId: string
+    billId: string,
+    companyId: string
 ) {
     // 1. Fetch all journal entries for the bill
     const { data: existingEntries, error: fetchError } = await (supabase
@@ -497,6 +515,7 @@ export async function voidBillJournalEntries(
         const { data: reversalEntry, error: reversalError } = await (supabase
             .from('journal_entries') as any)
             .insert({
+                company_id: companyId,
                 date: new Date().toISOString().split('T')[0],
                 reference: entry.reference,
                 description: `VOID REVERSAL: ${entry.description}`,
@@ -513,7 +532,8 @@ export async function voidBillJournalEntries(
 
         const revEntryId = (reversalEntry as any).id
 
-        const reversalLines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = (lines as any[]).map(line => ({
+        const reversalLines: any[] = (lines as any[]).map(line => ({
+            company_id: companyId,
             journal_entry_id: revEntryId,
             account_id: line.account_id,
             description: `REVERSAL: ${line.description}`,
@@ -553,7 +573,8 @@ export async function voidBillJournalEntries(
 
 export async function createBillPaymentJournalEntry(
     supabase: SupabaseClient<Database>,
-    paymentId: string
+    paymentId: string,
+    companyId: string
 ) {
     const { data, error: paymentError } = await (supabase
         .from('payments') as any)
@@ -582,6 +603,7 @@ export async function createBillPaymentJournalEntry(
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
         .insert({
+            company_id: companyId,
             date: payment.date,
             reference: payment.reference,
             description: `Bill Payment ${payment.reference || payment.id}`,
@@ -598,8 +620,9 @@ export async function createBillPaymentJournalEntry(
 
     const jeId = (journalEntry as any).id
 
-    const lines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = [
+    const lines: any[] = [
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: apAccountId,
             description: `A/P reduction for payment: ${payment.reference || ''}`,
@@ -607,6 +630,7 @@ export async function createBillPaymentJournalEntry(
             credit: 0
         },
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: payment.account_id,
             description: `Payment sent: ${payment.reference || ''}`,
@@ -631,7 +655,8 @@ export async function createBillPaymentJournalEntry(
  */
 export async function createExpenseJournalEntry(
     supabase: SupabaseClient<Database>,
-    expenseId: string
+    expenseId: string,
+    companyId: string
 ) {
     // 1. Fetch expense data
     const { data: expense, error: expenseError } = await (supabase
@@ -652,11 +677,12 @@ export async function createExpenseJournalEntry(
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
         .insert({
+            company_id: companyId,
             date: expense.date,
             reference: `EXP-${expense.id.slice(0, 8)}`,
             description: `Expense: ${expense.payee}`,
             is_system_generated: true,
-            source_type: 'manual', // Fallback to manual since 'expense' might not be in the enum yet
+            source_type: 'expense',
             source_id: expense.id
         })
         .select()
@@ -669,8 +695,9 @@ export async function createExpenseJournalEntry(
     const jeId = (journalEntry as any).id
 
     // 3. Prepare lines
-    const lines: Database['public']['Tables']['journal_entry_lines']['Insert'][] = [
+    const lines: any[] = [
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: expense.expense_account_id,
             description: `Expense: ${expense.payee}`,
@@ -678,6 +705,7 @@ export async function createExpenseJournalEntry(
             credit: 0
         },
         {
+            company_id: companyId,
             journal_entry_id: jeId,
             account_id: expense.payment_account_id,
             description: `Payment for: ${expense.payee}`,

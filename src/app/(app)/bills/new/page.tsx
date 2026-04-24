@@ -30,7 +30,7 @@ export default function NewBillPage() {
                     supabase.from('contacts').select('id, name').in('type', ['vendor', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
-                    supabase.from('company_settings').select('*').single()
+                    supabase.from('companies').select('*').single()
                 ])
 
                 setVendors(vendData || [])

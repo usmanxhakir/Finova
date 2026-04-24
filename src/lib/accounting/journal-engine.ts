@@ -92,7 +92,7 @@ export async function createInvoiceJournalEntry(
     })
 
     // Credit revenue accounts for each line item
-    invoice.invoice_line_items.forEach((item) => {
+    invoice.invoice_line_items.forEach((item: any) => {
         lines.push({
             company_id: companyId,
             journal_entry_id: jeId,

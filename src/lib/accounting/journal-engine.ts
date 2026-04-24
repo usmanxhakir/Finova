@@ -400,7 +400,7 @@ export async function createBillJournalEntry(
     const lines: any[] = []
 
     // Debit expense accounts for each line item
-    bill.bill_line_items.forEach((item) => {
+    bill.bill_line_items.forEach((item: any) => {
         lines.push({
             company_id: companyId,
             journal_entry_id: jeId,

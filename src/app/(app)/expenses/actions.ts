@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { createExpenseJournalEntry } from '@/lib/accounting/journal-engine'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 
+import { generateExpenseNumber } from '@/lib/accounting/number-generator'
+
 export async function handleSaveExpense(formData: FormData) {
     const supabase = await createClient()
     const companyId = await getCompanyId()
@@ -16,6 +18,7 @@ export async function handleSaveExpense(formData: FormData) {
     const payment_account_id = formData.get('payment_account_id') as string
     const amount = Math.round(Number(formData.get('amount')) * 100)
     const notes = formData.get('notes') as string
+    const reference = formData.get('reference') as string
     const receiptFile = formData.get('receipt') as File | null
 
     let receipt_url = formData.get('receipt_url') as string | null
@@ -40,7 +43,7 @@ export async function handleSaveExpense(formData: FormData) {
         }
     }
 
-    const expenseData = {
+    const expenseData: any = {
         company_id: companyId,
         date,
         payee,
@@ -48,6 +51,7 @@ export async function handleSaveExpense(formData: FormData) {
         payment_account_id,
         amount,
         notes,
+        reference,
         receipt_url,
         status: 'finalized'
     }
@@ -62,11 +66,27 @@ export async function handleSaveExpense(formData: FormData) {
 
         if (updateError) throw new Error(`Failed to update expense: ${updateError.message}`)
     } else {
+        // Generate number only on insert
+        let generatedNumber = await generateExpenseNumber(supabase)
+        expenseData.number = generatedNumber
+
         // Insert
-        const { data, error: insertError } = await (supabase.from('expenses') as any)
+        let { data, error: insertError } = await (supabase.from('expenses') as any)
             .insert(expenseData)
             .select()
             .single()
+
+        // Retry once if duplicate number error occurs (Postgres code 23505)
+        if (insertError?.code === '23505') {
+            generatedNumber = await generateExpenseNumber(supabase)
+            expenseData.number = generatedNumber
+            const retry = await (supabase.from('expenses') as any)
+                .insert(expenseData)
+                .select()
+                .single()
+            data = retry.data
+            insertError = retry.error
+        }
 
         if (insertError) throw new Error(`Failed to create expense: ${insertError.message}`)
         resultId = (data as any).id

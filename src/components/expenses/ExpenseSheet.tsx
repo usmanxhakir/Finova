@@ -62,6 +62,7 @@ const expenseSchema = z.object({
         message: "Amount must be a positive number",
     }),
     notes: z.string().optional(),
+    reference: z.string().optional(),
     receipt: z.any().optional(),
     receipt_url: z.string().optional(),
 })
@@ -102,6 +103,7 @@ export function ExpenseSheet({
             payment_account_id: "",
             amount: "",
             notes: "",
+            reference: "",
         },
     })
 
@@ -116,6 +118,7 @@ export function ExpenseSheet({
             formData.append('payment_account_id', values.payment_account_id)
             formData.append('amount', values.amount)
             formData.append('notes', values.notes || '')
+            formData.append('reference', values.reference || '')
             if (selectedFile) formData.append('receipt', selectedFile)
             if (values.receipt_url) formData.append('receipt_url', values.receipt_url)
 
@@ -161,7 +164,19 @@ export function ExpenseSheet({
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent className="sm:max-w-md overflow-y-auto p-6">
                 <SheetHeader className="mb-6">
-                    <SheetTitle>{expense ? 'Edit Expense' : 'New Expense'}</SheetTitle>
+                    <div className="flex items-center justify-between">
+                        <SheetTitle>{expense ? 'Edit Expense' : 'New Expense'}</SheetTitle>
+                        {expense?.number && (
+                            <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded text-xs font-mono font-medium border">
+                                {expense.number}
+                            </span>
+                        )}
+                        {!expense && (
+                            <span className="text-[10px] text-muted-foreground italic bg-zinc-50 px-2 py-0.5 rounded border border-dashed">
+                                Auto-numbering
+                            </span>
+                        )}
+                    </div>
                     <SheetDescription>
                         Record a direct expense without an Accounts Payable step.
                     </SheetDescription>
@@ -308,6 +323,20 @@ export function ExpenseSheet({
                                             className="resize-none"
                                             {...field}
                                         />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="reference"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Reference</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="e.g. receipt #, transaction ID" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

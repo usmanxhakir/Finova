@@ -7,6 +7,8 @@ import { LogOut, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 
+import { SearchBar } from "./SearchBar";
+
 export function Header() {
     const router = useRouter();
     const supabase = createClient();
@@ -44,6 +46,10 @@ export function Header() {
                 <h1 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
                     {companyName}
                 </h1>
+            </div>
+
+            <div className="flex-1 flex justify-center px-4">
+                <SearchBar />
             </div>
 
             <div className="flex items-center gap-4">

@@ -37,6 +37,7 @@ export function ExpenseTable({ expenses, accounts, onRowClick }: ExpenseTablePro
                 <TableHeader>
                     <TableRow>
                         <TableHead>Date</TableHead>
+                        <TableHead>Number</TableHead>
                         <TableHead>Payee</TableHead>
                         <TableHead>Expense Account</TableHead>
                         <TableHead>Payment Account</TableHead>
@@ -48,7 +49,7 @@ export function ExpenseTable({ expenses, accounts, onRowClick }: ExpenseTablePro
                 <TableBody>
                     {expenses.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                                 No expenses found. Record your first direct expense.
                             </TableCell>
                         </TableRow>
@@ -59,8 +60,18 @@ export function ExpenseTable({ expenses, accounts, onRowClick }: ExpenseTablePro
                                 className="cursor-pointer hover:bg-muted/50 transition-colors"
                                 onClick={() => onRowClick(expense)}
                             >
-                                <TableCell className="font-medium">
+                                <TableCell className="font-medium whitespace-nowrap">
                                     {formatDate(expense.date)}
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex flex-col">
+                                        <span className="font-medium">{expense.number || '---'}</span>
+                                        {expense.reference && (
+                                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                                                {expense.reference}
+                                            </span>
+                                        )}
+                                    </div>
                                 </TableCell>
                                 <TableCell>{expense.payee}</TableCell>
                                 <TableCell>{getAccountName(expense.expense_account_id)}</TableCell>

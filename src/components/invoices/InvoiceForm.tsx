@@ -65,8 +65,9 @@ const lineItemSchema = z.object({
 })
 
 const invoiceSchema = z.object({
-    number: z.string().min(1, 'Invoice number is required'),
+    number: z.string().optional(),
     contact_id: z.string().min(1, 'Customer is required'),
+    customer_reference: z.string().optional().nullable(),
     issue_date: z.string().min(1, 'Issue date is required'),
     due_date: z.string().min(1, 'Due date is required'),
     notes: z.string().optional().nullable(),
@@ -113,8 +114,9 @@ export function InvoiceForm({
     const form = useForm<InvoiceFormValues>({
         resolver: zodResolver(invoiceSchema) as any,
         defaultValues: initialData || {
-            number: nextNumber,
+            number: '',
             contact_id: '',
+            customer_reference: '',
             issue_date: new Date().toISOString().split('T')[0],
             due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             notes: '',
@@ -248,14 +250,28 @@ export function InvoiceForm({
                                 </FormItem>
                             )}
                         />
+                        <FormItem className="flex flex-col justify-end pb-1">
+                            <FormLabel className="mb-2">Invoice #</FormLabel>
+                            <div className="h-10 flex items-center">
+                                {form.getValues('number') ? (
+                                    <span className="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md font-mono font-medium border border-zinc-200 dark:border-zinc-700">
+                                        {form.getValues('number')}
+                                    </span>
+                                ) : (
+                                    <span className="text-sm text-muted-foreground italic">
+                                        Auto-assigned on save
+                                    </span>
+                                )}
+                            </div>
+                        </FormItem>
                         <FormField
                             control={form.control as any}
-                            name="number"
+                            name="customer_reference"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Invoice #</FormLabel>
+                                    <FormLabel>Customer Reference</FormLabel>
                                     <FormControl>
-                                        <Input {...field} value={field.value || ''} />
+                                        <Input placeholder="e.g. PO-1234 or customer order number" {...field} value={field.value || ''} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

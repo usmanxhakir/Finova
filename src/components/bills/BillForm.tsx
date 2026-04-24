@@ -258,9 +258,9 @@ export function BillForm({
                             name="reference_number"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Reference #</FormLabel>
+                                    <FormLabel>Vendor Reference</FormLabel>
                                     <FormControl>
-                                        <Input {...field} value={field.value || ''} placeholder="Vendor Inv #" disabled={isLocked} />
+                                        <Input {...field} value={field.value || ''} placeholder="Vendor's invoice or PO number" disabled={isLocked} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

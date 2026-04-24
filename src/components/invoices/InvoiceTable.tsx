@@ -38,6 +38,7 @@ type Invoice = Database['public']['Tables']['invoices']['Row'] & {
         name: string
     }
     sent_at: string | null
+    customer_reference: string | null
 }
 
 interface InvoiceTableProps {
@@ -93,6 +94,7 @@ export function InvoiceTable({ invoices }: InvoiceTableProps) {
 
                 const matchesSearch =
                     invoice.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (invoice.customer_reference || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                     invoice.contacts.name.toLowerCase().includes(searchQuery.toLowerCase())
 
                 let matchesDate = true
@@ -232,13 +234,20 @@ export function InvoiceTable({ invoices }: InvoiceTableProps) {
                                         </div>
                                     )}
                                     <TableCell className="font-medium">
-                                        <Link
-                                            href={`/invoices/${invoice.id}`}
-                                            className="text-primary hover:underline underline-offset-4"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            {invoice.number}
-                                        </Link>
+                                        <div className="flex flex-col">
+                                            <Link
+                                                href={`/invoices/${invoice.id}`}
+                                                className="text-primary hover:underline underline-offset-4"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {invoice.number}
+                                            </Link>
+                                            {invoice.customer_reference && (
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                                                    Ref: {invoice.customer_reference}
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="font-medium text-zinc-900 dark:text-zinc-100">{invoice.contacts.name}</TableCell>
                                     <TableCell>{format(new Date(invoice.issue_date), 'MMM d, yyyy')}</TableCell>

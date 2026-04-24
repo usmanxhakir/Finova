@@ -92,6 +92,7 @@ export function BillTable({ bills }: BillTableProps) {
 
                 const matchesSearch =
                     bill.number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (bill.reference_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                     bill.contacts.name.toLowerCase().includes(searchQuery.toLowerCase())
 
                 let matchesDate = true
@@ -230,13 +231,20 @@ export function BillTable({ bills }: BillTableProps) {
                                         </div>
                                     )}
                                     <TableCell className="font-medium">
-                                        <Link
-                                            href={`/bills/${bill.id}`}
-                                            className="text-primary hover:underline underline-offset-4"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            {bill.number}
-                                        </Link>
+                                        <div className="flex flex-col">
+                                            <Link
+                                                href={`/bills/${bill.id}`}
+                                                className="text-primary hover:underline underline-offset-4"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                {bill.number}
+                                            </Link>
+                                            {bill.reference_number && (
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                                                    Ref: {bill.reference_number}
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="font-medium text-zinc-900 dark:text-zinc-100">{bill.contacts.name}</TableCell>
                                     <TableCell>{format(new Date(bill.issue_date), 'MMM d, yyyy')}</TableCell>

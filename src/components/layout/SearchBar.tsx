@@ -146,8 +146,8 @@ export function SearchBar() {
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-0.5">
                                                     <Badge variant="outline" className="text-[10px] h-4 py-0 px-1 capitalize">{invoice.status}</Badge>
-                                                    {invoice.customer_reference && (
-                                                        <span className="text-[10px] text-muted-foreground truncate">Ref: {invoice.customer_reference}</span>
+                                                    {invoice.notes && (
+                                                        <span className="text-[10px] text-muted-foreground truncate">{invoice.notes}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -199,7 +199,7 @@ export function SearchBar() {
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-sm font-medium truncate">{expense.number || 'Expense'} · {expense.description || expense.payee || 'Direct Expense'}</span>
+                                                    <span className="text-sm font-medium truncate">{expense.payee || expense.description || 'Direct Expense'}</span>
                                                     <span className="text-xs font-semibold">{formatCurrency(expense.amount)}</span>
                                                 </div>
                                                 {expense.reference && (
@@ -217,7 +217,7 @@ export function SearchBar() {
                                     {results.contacts.map(contact => (
                                         <button
                                             key={contact.id}
-                                            onClick={() => navigateTo(`/contacts/${contact.id}`)}
+                                            onClick={() => navigateTo(`/contacts`)}
                                             className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 text-left transition-colors"
                                         >
                                             <div className="h-8 w-8 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
@@ -241,7 +241,7 @@ export function SearchBar() {
                                     {results.items.map(item => (
                                         <button
                                             key={item.id}
-                                            onClick={() => navigateTo(`/items/${item.id}`)}
+                                            onClick={() => navigateTo(`/items`)}
                                             className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-900 text-left transition-colors"
                                         >
                                             <div className="h-8 w-8 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">

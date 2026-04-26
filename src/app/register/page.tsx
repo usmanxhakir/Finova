@@ -41,6 +41,7 @@ export default function RegisterPage() {
     const [step, setStep] = useState(1)
     const [isLoading, setIsLoading] = useState(false)
     const [adminId, setAdminId] = useState<string | null>(null)
+    const [authSession, setAuthSession] = useState<any>(null)
     const [logoFile, setLogoFile] = useState<File | null>(null)
     const supabase = createClient()
 
@@ -74,6 +75,10 @@ export default function RegisterPage() {
 
         if (data.user) {
             setAdminId(data.user.id)
+            if (data.session) {
+                await supabase.auth.setSession(data.session)
+                setAuthSession(data.session)
+            }
             setStep(2)
             toast.success('Admin account created. Now setup your company.')
         }

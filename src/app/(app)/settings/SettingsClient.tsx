@@ -46,7 +46,7 @@ export function SettingsClient({ initialCompanySettings, userProfile }: Settings
                 </TabsList>
 
                 <TabsContent value="company" className="mt-6">
-                    <CompanyTab initialSettings={initialCompanySettings} />
+                    <CompanyTab initialSettings={initialCompanySettings ?? {}} />
                 </TabsContent>
 
                 {isAdmin && (

@@ -12,17 +12,22 @@ export default async function SettingsPage() {
         redirect('/login')
     }
 
-    // Fetch initial company settings
-    const { data: companySettings } = await supabase
-        .from('companies')
-        .select('*')
-        .single()
-
     // Fetch user profile to check role
     const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
+        .single()
+
+    if (!profile?.company_id) {
+        redirect('/login')
+    }
+
+    // Fetch initial company settings
+    const { data: companySettings } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', profile.company_id)
         .single()
 
     return (

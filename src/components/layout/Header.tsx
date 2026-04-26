@@ -16,13 +16,25 @@ export function Header() {
 
     useEffect(() => {
         async function getCompany() {
-            const { data, error } = await (supabase.from("companies") as any)
-                .select("name")
-                .limit(1)
-                .single();
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+
+            const { data: profile } = await (supabase
+                .from('profiles') as any)
+                .select('company_id')
+                .eq('id', user.id)
+                .single()
+
+            if (!profile?.company_id) return
+
+            const { data, error } = await (supabase
+                .from('companies') as any)
+                .select('name')
+                .eq('id', profile.company_id)
+                .single()
 
             if (data && !error) {
-                setCompanyName(data.name);
+                setCompanyName(data.name)
             }
         }
         getCompany();

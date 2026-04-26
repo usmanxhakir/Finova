@@ -13,8 +13,8 @@ export default async function SettingsPage() {
     }
 
     // Fetch user profile to check role
-    const { data: profile } = await supabase
-        .from('profiles')
+    const { data: profile } = await (supabase
+        .from('profiles') as any)
         .select('*')
         .eq('id', user.id)
         .single()

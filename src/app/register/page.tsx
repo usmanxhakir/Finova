@@ -120,12 +120,12 @@ export default function RegisterPage() {
         const companyId = company.id
 
         // 2. Create Profile linked to Company
-        const { error: profileError } = await (supabase.from('profiles') as any).insert({
+        const { error: profileError } = await (supabase.from('profiles') as any).upsert({
             id: adminId,
             full_name: step1Form.getValues().fullName,
             role: 'admin',
             company_id: companyId
-        })
+        }, { onConflict: 'id' })
 
         if (profileError) {
             toast.error('Error creating profile: ' + profileError.message)

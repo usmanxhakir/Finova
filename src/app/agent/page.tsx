@@ -32,7 +32,7 @@ export default function AgentPage() {
         .select('id')
         .order('last_message_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle() as { data: { id: string } | null, error: unknown };
 
       if (lastConversation) {
         setConversationId(lastConversation.id);

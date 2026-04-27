@@ -20,6 +20,7 @@ import {
     ClipboardList,
     Landmark,
     Plus,
+    Sparkles,
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -31,6 +32,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
+    { name: "AI Agent", href: "/agent", icon: Sparkles, badge: "✦ Beta" },
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Invoices", href: "/invoices", icon: FileText },
     { name: "Bills", href: "/bills", icon: Receipt },
@@ -173,7 +175,16 @@ export function Sidebar() {
                                     isActive ? "text-[#6d28d9]" : "text-zinc-500"
                                 )}
                             />
-                            {!collapsed && <span className="ml-3">{item.name}</span>}
+                            {!collapsed && (
+                                <div className="ml-3 flex items-center gap-2">
+                                    <span>{item.name}</span>
+                                    {item.badge && (
+                                        <span className="bg-[#ede9fe] text-[#7c3aed] text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                            {item.badge}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </Link>
                     );
                 })}

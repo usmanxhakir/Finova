@@ -38,9 +38,17 @@ export default function AgentPage() {
         setConversationId(lastConversation.id);
         const { data: msgs } = await supabase
           .from('agent_messages')
-          .select('*')
+          .select('id, role, content, created_at')
           .eq('conversation_id', lastConversation.id)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true }) as unknown as {
+            data: Array<{
+              id: string
+              role: string
+              content: string
+              created_at: string
+            }> | null
+            error: unknown
+          };
         
         if (msgs && msgs.length > 0) {
           setMessages(msgs.map(m => ({ id: m.id, role: m.role as 'user'|'assistant', content: m.content })));
@@ -67,7 +75,7 @@ export default function AgentPage() {
       .from('agent_conversations')
       .insert({ title: 'New Conversation' })
       .select('id')
-      .single();
+      .single() as unknown as { data: { id: string } | null, error: unknown };
       
     if (data) {
       setConversationId(data.id);
@@ -81,7 +89,7 @@ export default function AgentPage() {
         .from('agent_conversations')
         .insert({ title: 'New Conversation' })
         .select('id')
-        .single();
+        .single() as unknown as { data: { id: string } | null, error: unknown };
       if (data) {
         cid = data.id;
         setConversationId(data.id);

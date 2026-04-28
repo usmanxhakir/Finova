@@ -49,7 +49,6 @@ export interface ParsedIntent {
     item_type?: 'product' | 'service'
     default_rate?: number     // CENTS — integer only
     income_account_name?: string
-    expense_account_name?: string
 
     // RUN_REPORT
     report_type?: 'pl' | 'balance-sheet' | 'ar-aging' | 'ap-aging'

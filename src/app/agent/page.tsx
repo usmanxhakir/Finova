@@ -474,7 +474,7 @@ export default function AgentPage() {
                                 className={`w-full h-8 pl-16 pr-2 text-[13px] border rounded bg-white focus:outline-none focus:border-[#7c3aed] ${showWarning ? 'border-[#d97706] border-l-2' : 'border-[#e5e7eb]'}`}
                               />
                               {showWarning && (
-                                <AlertTriangle size={14} className="text-[#d97706] absolute right-2" title="Contact not found — will be skipped if not updated" />
+                                <AlertTriangle size={14} className="text-[#d97706] absolute right-2" />
                               )}
                             </div>
                           )}

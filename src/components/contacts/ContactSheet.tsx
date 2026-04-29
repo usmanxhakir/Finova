@@ -46,9 +46,21 @@ import { useUserRole } from "@/hooks/useUserRole";
 
 type Contact = Database["public"]["Tables"]["contacts"]["Row"];
 
+export function normalizeContactType(value: any): "customer" | "vendor" | "both" {
+    if (typeof value !== "string") return "customer";
+    const normalized = value.trim().toLowerCase();
+    if (["customer", "vendor", "both"].includes(normalized)) {
+        return normalized as "customer" | "vendor" | "both";
+    }
+    return "customer";
+}
+
 const contactSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
-    type: z.enum(["customer", "vendor", "both"]),
+    type: z.preprocess(
+        (val) => normalizeContactType(val),
+        z.enum(["customer", "vendor", "both"])
+    ),
     email: z.string().email("Invalid email address").optional().or(z.literal("")),
     phone: z.string().optional(),
     website: z.string().url("Invalid URL").optional().or(z.literal("")),
@@ -99,7 +111,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSuccess }: Contact
         if (contact) {
             form.reset({
                 name: contact.name,
-                type: contact.type as "customer" | "vendor" | "both",
+                type: normalizeContactType(contact.type),
                 email: contact.email || "",
                 phone: contact.phone || "",
                 website: contact.website || "",
@@ -199,7 +211,10 @@ export function ContactSheet({ open, onOpenChange, contact, onSuccess }: Contact
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Type</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <Select 
+                                        onValueChange={field.onChange} 
+                                        value={field.value || "customer"}
+                                    >
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select type" />

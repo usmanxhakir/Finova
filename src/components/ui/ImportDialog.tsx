@@ -195,14 +195,14 @@ export function ImportDialog({
                                         {field.required && <span className="text-destructive font-bold">*</span>}
                                     </Label>
                                     <Select 
-                                        value={mapping[field.key] || ""} 
-                                        onValueChange={(val) => setMapping(prev => ({ ...prev, [field.key]: val }))}
+                                        value={mapping[field.key] || "__skip__"} 
+                                        onValueChange={(val) => setMapping(prev => ({ ...prev, [field.key]: val === "__skip__" ? "" : val }))}
                                     >
                                         <SelectTrigger className={!mapping[field.key] && field.required ? "border-destructive/50" : ""}>
                                             <SelectValue placeholder="Select column..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">-- Skip Field --</SelectItem>
+                                            <SelectItem value="__skip__">-- Skip Field --</SelectItem>
                                             {csvHeaders.map(header => (
                                                 <SelectItem key={header} value={header}>{header}</SelectItem>
                                             ))}

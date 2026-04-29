@@ -12,7 +12,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { ContactTable } from "@/components/contacts/ContactTable";
-import { ContactSheet } from "@/components/contacts/ContactSheet";
+import { ContactSheet, normalizeContactType } from "@/components/contacts/ContactSheet";
 import { ImportDialog } from "@/components/ui/ImportDialog";
 import { Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -75,7 +75,7 @@ export default function ContactsPage() {
         try {
             const contactsToInsert = data.map(row => ({
                 name: row.name,
-                type: (row.type?.toLowerCase() || "customer") as "customer" | "vendor" | "both",
+                type: normalizeContactType(row.type),
                 email: row.email || null,
                 phone: row.phone || null,
                 website: row.website || null,

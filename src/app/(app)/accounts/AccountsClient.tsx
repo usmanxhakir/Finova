@@ -167,7 +167,8 @@ export function AccountsClient({ initialAccounts }: { initialAccounts: Account[]
                 throw new Error('No valid accounts found. code, name, type, and sub_type are required.');
             }
 
-            const { error } = await (supabase.from('accounts') as any).insert(validAccounts);
+            const { error } = await (supabase.from('accounts') as any)
+                .upsert(validAccounts, { onConflict: 'code', ignoreDuplicates: true });
             if (error) throw error;
 
             toast.success(`Successfully imported ${validAccounts.length} accounts`);

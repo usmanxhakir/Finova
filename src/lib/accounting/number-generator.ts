@@ -13,10 +13,15 @@ async function generateNumber(
     const { data: company, error: companyError } = await supabase
         .from('companies')
         .select(prefixKey)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
-    if (companyError || !company) {
-        throw new Error(`Failed to fetch company prefix: ${companyError?.message}`)
+    if (companyError) {
+        throw new Error(`Failed to fetch company prefix: ${companyError.message}`)
+    }
+
+    if (!company) {
+        throw new Error('Company settings not found')
     }
 
     const prefix = (company as any)[prefixKey] || (prefixKey === 'invoice_prefix' ? 'INV-' : prefixKey === 'bill_prefix' ? 'BILL-' : 'EXP-')

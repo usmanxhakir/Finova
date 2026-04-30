@@ -59,7 +59,6 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
     const { error: invoiceUpdateError } = await (supabase.from('invoices') as any)
         .update({
             contact_id: values.contact_id,
-            customer_reference: values.customer_reference,
             issue_date: values.issue_date,
             due_date: values.due_date,
             notes: values.notes,

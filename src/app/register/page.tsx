@@ -141,25 +141,55 @@ export default function RegisterPage() {
 
         // 3. Seed Default Chart of Accounts
         const defaultAccounts = [
-            { company_id: companyId, code: '1100', name: 'Accounts Receivable', type: 'asset', sub_type: 'current_asset', is_active: true },
-            { company_id: companyId, code: '1200', name: 'Cash', type: 'asset', sub_type: 'cash', is_active: true },
-            { company_id: companyId, code: '1300', name: 'Main Bank Account', type: 'asset', sub_type: 'bank', is_active: true },
-            { company_id: companyId, code: '2100', name: 'Accounts Payable', type: 'liability', sub_type: 'current_liability', is_active: true },
-            { company_id: companyId, code: '3100', name: 'Retained Earnings', type: 'equity', sub_type: 'equity', is_active: true },
-            { company_id: companyId, code: '4100', name: 'Sales', type: 'revenue', sub_type: 'revenue', is_active: true },
-            { company_id: companyId, code: '5100', name: 'Cost of Goods Sold', type: 'expense', sub_type: 'cost_of_goods_sold', is_active: true },
-            { company_id: companyId, code: '6100', name: 'General Expenses', type: 'expense', sub_type: 'expense', is_active: true },
-            { company_id: companyId, code: '2200', name: 'Tax Payable', type: 'liability', sub_type: 'current_liability', is_active: true },
+            // Assets
+            { company_id: companyId, code: '1000', name: 'Checking Account', type: 'asset', sub_type: 'bank', description: 'Main operating bank account', is_active: true, is_system: false },
+            { company_id: companyId, code: '1010', name: 'Savings Account', type: 'asset', sub_type: 'bank', description: 'Business savings account', is_active: true, is_system: false },
+            { company_id: companyId, code: '1020', name: 'Petty Cash', type: 'asset', sub_type: 'cash', description: 'Cash on hand', is_active: true, is_system: false },
+            { company_id: companyId, code: '1100', name: 'Accounts Receivable', type: 'asset', sub_type: 'accounts_receivable', description: 'Money owed by customers', is_active: true, is_system: true },
+            { company_id: companyId, code: '1200', name: 'Inventory', type: 'asset', sub_type: 'other_current_asset', description: 'Goods held for sale', is_active: true, is_system: false },
+            { company_id: companyId, code: '1300', name: 'Prepaid Expenses', type: 'asset', sub_type: 'other_current_asset', description: 'Prepaid insurance, rent, software', is_active: true, is_system: false },
+            { company_id: companyId, code: '1500', name: 'Equipment', type: 'asset', sub_type: 'fixed_asset', description: 'Computers, machinery, equipment', is_active: true, is_system: false },
+            { company_id: companyId, code: '1510', name: 'Accumulated Depreciation', type: 'asset', sub_type: 'fixed_asset', description: 'Accumulated depreciation on fixed assets', is_active: true, is_system: false },
+
+            // Liabilities
+            { company_id: companyId, code: '2000', name: 'Accounts Payable', type: 'liability', sub_type: 'accounts_payable', description: 'Money owed to vendors', is_active: true, is_system: true },
+            { company_id: companyId, code: '2100', name: 'Credit Card', type: 'liability', sub_type: 'credit_card', description: 'Business credit card', is_active: true, is_system: false },
+            { company_id: companyId, code: '2200', name: 'Tax Payable', type: 'liability', sub_type: 'other_current_liability', description: 'Sales tax collected, not yet remitted', is_active: true, is_system: false },
+            { company_id: companyId, code: '2300', name: 'Accrued Liabilities', type: 'liability', sub_type: 'other_current_liability', description: 'Wages, benefits, and other accruals', is_active: true, is_system: false },
+            { company_id: companyId, code: '2500', name: 'Loans Payable', type: 'liability', sub_type: 'long_term_liability', description: 'Bank loans and long-term debt', is_active: true, is_system: false },
+
+            // Equity
+            { company_id: companyId, code: '3000', name: "Owner's Equity", type: 'equity', sub_type: 'equity', description: 'Owner investment and drawings', is_active: true, is_system: false },
+            { company_id: companyId, code: '3100', name: 'Retained Earnings', type: 'equity', sub_type: 'equity', description: 'Cumulative net income or loss', is_active: true, is_system: false },
+
+            // Revenue
+            { company_id: companyId, code: '4000', name: 'Sales Revenue', type: 'revenue', sub_type: 'income', description: 'Income from goods sold', is_active: true, is_system: false },
+            { company_id: companyId, code: '4100', name: 'Service Revenue', type: 'revenue', sub_type: 'income', description: 'Income from services rendered', is_active: true, is_system: false },
+            { company_id: companyId, code: '4200', name: 'Other Income', type: 'revenue', sub_type: 'other_income', description: 'Interest, refunds, miscellaneous income', is_active: true, is_system: false },
+
+            // Expenses
+            { company_id: companyId, code: '5000', name: 'Cost of Goods Sold', type: 'expense', sub_type: 'cost_of_goods_sold', description: 'Direct cost of products sold', is_active: true, is_system: false },
+            { company_id: companyId, code: '6000', name: 'Payroll & Salaries', type: 'expense', sub_type: 'expense', description: 'Employee wages and salaries', is_active: true, is_system: false },
+            { company_id: companyId, code: '6100', name: 'Rent & Utilities', type: 'expense', sub_type: 'expense', description: 'Office rent, internet, electricity', is_active: true, is_system: false },
+            { company_id: companyId, code: '6200', name: 'Marketing & Advertising', type: 'expense', sub_type: 'expense', description: 'Ads, campaigns, and promotions', is_active: true, is_system: false },
+            { company_id: companyId, code: '6300', name: 'Software & Subscriptions', type: 'expense', sub_type: 'expense', description: 'SaaS tools and software licenses', is_active: true, is_system: false },
+            { company_id: companyId, code: '6400', name: 'Professional Services', type: 'expense', sub_type: 'expense', description: 'Legal, accounting, and consulting fees', is_active: true, is_system: false },
+            { company_id: companyId, code: '6500', name: 'Travel & Entertainment', type: 'expense', sub_type: 'expense', description: 'Business travel, meals, client entertainment', is_active: true, is_system: false },
+            { company_id: companyId, code: '6600', name: 'Office Supplies', type: 'expense', sub_type: 'expense', description: 'Stationery and general office supplies', is_active: true, is_system: false },
+            { company_id: companyId, code: '6700', name: 'Depreciation Expense', type: 'expense', sub_type: 'expense', description: 'Depreciation on fixed assets', is_active: true, is_system: false },
+            { company_id: companyId, code: '6800', name: 'General & Administrative', type: 'expense', sub_type: 'expense', description: 'Miscellaneous operating expenses', is_active: true, is_system: false },
         ]
 
         const { error: coaError } = await (supabase.from('accounts') as any).insert(defaultAccounts)
-        
+
         if (coaError) {
-            toast.error('Warning: Company created but failed to seed Chart of Accounts. You may need to add accounts manually.')
             console.error('COA Seeding Error:', coaError)
+            toast.error('Company created but failed to seed Chart of Accounts: ' + coaError.message)
+            setIsLoading(false)
+            return  // stop here — don't send user to dashboard with broken state
         }
 
-        toast.success('Onboarding complete!')
+        toast.success('Setup complete! Your account is ready.')
         router.push('/dashboard')
         router.refresh()
     }

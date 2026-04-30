@@ -4,19 +4,24 @@ import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
 import { createInvoiceJournalEntry } from '@/lib/accounting/journal-engine'
-import { generateInvoiceNumber } from '@/lib/accounting/number-generator'
 
 export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
 
     try {
-        // 1. Generate and Insert with retry logic
-        let generatedNumber = await generateInvoiceNumber(supabase)
+        // 1. Generate Invoice Number via RPC
+        const { data: invoiceNumber, error: numError } = await (supabase as any)
+            .rpc('generate_invoice_number')
+
+        if (numError || !invoiceNumber) {
+            console.error('[create-invoice] number generation error:', numError)
+            throw new Error('Failed to generate invoice number')
+        }
         let { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
             .insert({
                 company_id: companyId,
-                number: generatedNumber,
+                number: invoiceNumber,
                 contact_id: values.contact_id,
                 issue_date: values.issue_date,
                 due_date: values.due_date,
@@ -34,35 +39,8 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
             .select()
             .single()
 
-        // Retry once if duplicate number error occurs (Postgres code 23505)
-        if (invoiceError?.code === '23505') {
-            generatedNumber = await generateInvoiceNumber(supabase)
-            const retry = await (supabase.from('invoices') as any)
-                .insert({
-                    company_id: companyId,
-                    number: generatedNumber,
-                    contact_id: values.contact_id,
-                    issue_date: values.issue_date,
-                    due_date: values.due_date,
-                    notes: values.notes,
-                    terms: values.terms,
-                    footer: values.footer,
-                    status: isFinalize ? 'sent' : 'draft',
-                    subtotal: Math.round(Number(values.subtotal) * 100),
-                    tax_amount: Math.round(Number(values.tax_amount) * 100),
-                    discount_amount: Math.round(Number(values.discount_amount) * 100),
-                    total: Math.round(Number(values.total) * 100),
-                    amount_due: Math.round(Number(values.total) * 100),
-                    amount_paid: 0
-                })
-                .select()
-                .single()
-
-            invoiceData = retry.data
-            invoiceError = retry.error
-        }
-
         const invoice = invoiceData as any
+
 
         if (invoiceError || !invoice) {
             console.error('[create-invoice] invoice insert error:', invoiceError)

@@ -10,34 +10,10 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
     const supabase = await createClient()
     const companyId = await getCompanyId()
 
-    // 1. Generate and Insert with retry logic
-    let generatedNumber = await generateInvoiceNumber(supabase)
-    let { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
-        .insert({
-            company_id: companyId,
-            number: generatedNumber,
-            contact_id: values.contact_id,
-            customer_reference: values.customer_reference,
-            issue_date: values.issue_date,
-            due_date: values.due_date,
-            notes: values.notes,
-            terms: values.terms,
-            footer: values.footer,
-            status: isFinalize ? 'sent' : 'draft',
-            subtotal: Math.round(Number(values.subtotal) * 100),
-            tax_amount: Math.round(Number(values.tax_amount) * 100),
-            discount_amount: Math.round(Number(values.discount_amount) * 100),
-            total: Math.round(Number(values.total) * 100),
-            amount_due: Math.round(Number(values.total) * 100),
-            amount_paid: 0
-        })
-        .select()
-        .single()
-
-    // Retry once if duplicate number error occurs (Postgres code 23505)
-    if (invoiceError?.code === '23505') {
-        generatedNumber = await generateInvoiceNumber(supabase)
-        const retry = await (supabase.from('invoices') as any)
+    try {
+        // 1. Generate and Insert with retry logic
+        let generatedNumber = await generateInvoiceNumber(supabase)
+        let { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
             .insert({
                 company_id: companyId,
                 number: generatedNumber,
@@ -58,55 +34,87 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
             })
             .select()
             .single()
-        
-        invoiceData = retry.data
-        invoiceError = retry.error
-    }
 
-    const invoice = invoiceData as any
+        // Retry once if duplicate number error occurs (Postgres code 23505)
+        if (invoiceError?.code === '23505') {
+            generatedNumber = await generateInvoiceNumber(supabase)
+            const retry = await (supabase.from('invoices') as any)
+                .insert({
+                    company_id: companyId,
+                    number: generatedNumber,
+                    contact_id: values.contact_id,
+                    customer_reference: values.customer_reference,
+                    issue_date: values.issue_date,
+                    due_date: values.due_date,
+                    notes: values.notes,
+                    terms: values.terms,
+                    footer: values.footer,
+                    status: isFinalize ? 'sent' : 'draft',
+                    subtotal: Math.round(Number(values.subtotal) * 100),
+                    tax_amount: Math.round(Number(values.tax_amount) * 100),
+                    discount_amount: Math.round(Number(values.discount_amount) * 100),
+                    total: Math.round(Number(values.total) * 100),
+                    amount_due: Math.round(Number(values.total) * 100),
+                    amount_paid: 0
+                })
+                .select()
+                .single()
 
-    if (invoiceError || !invoice) {
-        return { success: false, errorCode: 'UNKNOWN', message: invoiceError?.message || 'Failed to create invoice' }
-    }
-
-    // 2. Insert Line Items
-    const lineItems = values.line_items.map((item: any) => ({
-        company_id: companyId,
-        invoice_id: invoice.id,
-        item_id: item.item_id || null,
-        description: item.description,
-        quantity: Number(item.quantity),
-        rate: Math.round(Number(item.rate) * 100),
-        amount: Math.round(Number(item.amount) * 100),
-        account_id: item.account_id,
-        tax_rate: Number(item.tax_rate)
-    }))
-
-    const { error: linesError } = await (supabase.from('invoice_line_items') as any)
-        .insert(lineItems)
-
-    if (linesError) {
-        // Cleanup invoice on error
-        await (supabase.from('invoices') as any).delete().eq('id', invoice.id)
-        throw new Error(`Failed to create line items: ${linesError.message}`)
-    }
-
-    // 3. Update next number in settings (now in companies table)
-    if (settings?.id) {
-        await (supabase.from('companies') as any)
-            .update({ invoice_next_number: (settings.invoice_next_number || 1) + 1 })
-            .eq('id', settings.id)
-    }
-
-    // 4. Create Journal Entry if Finalized
-    if (isFinalize) {
-        try {
-            await createInvoiceJournalEntry(supabase, invoice.id, companyId)
-        } catch (err: any) {
-            console.error('Journal entry creation failed:', err)
-            // We keep the invoice but report the error
+            invoiceData = retry.data
+            invoiceError = retry.error
         }
+
+        const invoice = invoiceData as any
+
+        if (invoiceError || !invoice) {
+            console.error('[create-invoice] invoice insert error:', invoiceError)
+            return { success: false, errorCode: 'UNKNOWN', message: invoiceError?.message || 'Failed to create invoice' }
+        }
+
+        // 2. Insert Line Items
+        const lineItems = values.line_items.map((item: any) => ({
+            company_id: companyId,
+            invoice_id: invoice.id,
+            item_id: item.item_id || null,
+            description: item.description,
+            quantity: Number(item.quantity),
+            rate: Math.round(Number(item.rate) * 100),
+            amount: Math.round(Number(item.amount) * 100),
+            account_id: item.account_id,
+            tax_rate: Number(item.tax_rate)
+        }))
+
+        const { error: linesError } = await (supabase.from('invoice_line_items') as any)
+            .insert(lineItems)
+
+        if (linesError) {
+            console.error('[create-invoice] line items insert error:', linesError)
+            // Cleanup invoice on error
+            await (supabase.from('invoices') as any).delete().eq('id', invoice.id)
+            return { success: false, errorCode: 'LINE_ITEMS_FAILED', message: `Failed to create line items: ${linesError.message}` }
+        }
+
+        // 3. Update next number in settings (now in companies table)
+        if (settings?.id) {
+            await (supabase.from('companies') as any)
+                .update({ invoice_next_number: (settings.invoice_next_number || 1) + 1 })
+                .eq('id', settings.id)
+        }
+
+        // 4. Create Journal Entry if Finalized
+        if (isFinalize) {
+            try {
+                await createInvoiceJournalEntry(supabase, invoice.id, companyId)
+            } catch (err: any) {
+                console.error('[create-invoice] journal entry creation failed:', err)
+                // We keep the invoice but log the error
+            }
+        }
+    } catch (error) {
+        console.error('[create-invoice] error:', error)
+        return { success: false, errorCode: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) }
     }
 
+    // redirect() must be called OUTSIDE try/catch — it throws NEXT_REDIRECT internally
     redirect('/invoices')
 }

@@ -11,12 +11,15 @@ import {
     TableRow 
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Plus, Lock, Pencil, ChevronRight, ChevronDown } from 'lucide-react'
+import { Plus, Lock, Pencil, ChevronRight, ChevronDown, Upload } from 'lucide-react'
 import { AccountSheet } from '@/components/accounts/AccountSheet'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useUserRole } from '@/hooks/useUserRole'
+import { ImportDialog } from '@/components/ui/ImportDialog'
+import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 
 type Account = {
     id: string
@@ -41,9 +44,11 @@ const TYPE_CONFIG = {
 }
 
 export function AccountsClient({ initialAccounts }: { initialAccounts: Account[] }) {
+    const supabase = createClient()
     const router = useRouter()
     const { isViewer } = useUserRole()
     const [sheetOpen, setSheetOpen] = useState(false)
+    const [importOpen, setImportOpen] = useState(false)
     const [selectedAccount, setSelectedAccount] = useState<Account | undefined>()
 
     const groupedAccounts = useMemo(() => {
@@ -132,6 +137,54 @@ export function AccountsClient({ initialAccounts }: { initialAccounts: Account[]
         setSheetOpen(true)
     }
 
+    const handleImport = async (data: any[]) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('company_id')
+                .eq('id', user!.id)
+                .single() as { data: { company_id: string } | null, error: any };
+
+            if (!profile?.company_id) throw new Error('Could not resolve company.');
+            const company_id = profile.company_id;
+
+            const accountsToInsert = data.map(row => ({
+                company_id,
+                code: row.code?.toString().trim(),
+                name: row.name?.toString().trim(),
+                type: row.type?.toString().trim().toLowerCase(),
+                sub_type: row.sub_type?.toString().trim().toLowerCase(),
+                description: row.description || null,
+                is_active: true,
+                is_system: false,
+                parent_account_id: null,
+            }));
+
+            const validAccounts = accountsToInsert.filter(a => a.code && a.name && a.type && a.sub_type);
+
+            if (validAccounts.length === 0) {
+                throw new Error('No valid accounts found. code, name, type, and sub_type are required.');
+            }
+
+            const { error } = await (supabase.from('accounts') as any).insert(validAccounts);
+            if (error) throw error;
+
+            toast.success(`Successfully imported ${validAccounts.length} accounts`);
+            setImportOpen(false);
+            router.refresh();
+        } catch (error: any) {
+            toast.error(error.message || 'Import failed');
+        }
+    };
+
+    const sampleCsvUrl = useMemo(() => {
+        const headers = ["code", "name", "type", "sub_type", "description"];
+        const exampleRow = ["6100", "Office Supplies", "expense", "expense", "Office and stationery expenses"];
+        const content = [headers.join(","), exampleRow.join(",")].join("\n");
+        return `data:text/csv;charset=utf-8,${encodeURIComponent(content)}`;
+    }, []);
+
     return (
         <div className="flex flex-col gap-6 p-6">
             <div className="flex justify-between items-center">
@@ -140,9 +193,14 @@ export function AccountsClient({ initialAccounts }: { initialAccounts: Account[]
                     <p className="text-muted-foreground">Manage your organization's financial accounts and balances.</p>
                 </div>
                 {!isViewer && (
-                    <Button onClick={handleNew}>
-                        <Plus className="mr-2 h-4 w-4" /> New Account
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" onClick={() => setImportOpen(true)}>
+                            <Upload className="mr-2 h-4 w-4" /> Import
+                        </Button>
+                        <Button onClick={handleNew}>
+                            <Plus className="mr-2 h-4 w-4" /> New Account
+                        </Button>
+                    </div>
                 )}
             </div>
 
@@ -235,6 +293,22 @@ export function AccountsClient({ initialAccounts }: { initialAccounts: Account[]
                 account={selectedAccount}
                 accounts={initialAccounts}
                 onSuccess={() => router.refresh()}
+            />
+
+            <ImportDialog
+                open={importOpen}
+                onOpenChange={setImportOpen}
+                title="Import Accounts"
+                description="Upload a CSV file to import accounts in bulk."
+                sampleCsvUrl={sampleCsvUrl}
+                fields={[
+                    { key: "code", label: "Account Code", required: true },
+                    { key: "name", label: "Account Name", required: true },
+                    { key: "type", label: "Type (asset/liability/equity/revenue/expense)", required: true },
+                    { key: "sub_type", label: "Sub-type", required: true },
+                    { key: "description", label: "Description" },
+                ]}
+                onImport={handleImport}
             />
         </div>
     )

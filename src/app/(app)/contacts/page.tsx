@@ -78,7 +78,7 @@ export default function ContactsPage() {
                 .from('profiles')
                 .select('company_id')
                 .eq('id', user!.id)
-                .single();
+                .single() as { data: { company_id: string } | null, error: any };
 
             if (!profile?.company_id) throw new Error('Could not resolve company.');
             const company_id = profile.company_id;

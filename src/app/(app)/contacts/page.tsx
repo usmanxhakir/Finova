@@ -73,7 +73,18 @@ export default function ContactsPage() {
 
     const handleImport = async (data: any[]) => {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('company_id')
+                .eq('id', user!.id)
+                .single();
+
+            if (!profile?.company_id) throw new Error('Could not resolve company.');
+            const company_id = profile.company_id;
+
             const contactsToInsert = data.map(row => ({
+                company_id,
                 name: row.name,
                 type: normalizeContactType(row.type),
                 email: row.email || null,

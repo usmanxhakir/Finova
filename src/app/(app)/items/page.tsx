@@ -69,11 +69,22 @@ export default function ItemsPage() {
 
     const handleImport = async (data: any[]) => {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('company_id')
+                .eq('id', user!.id)
+                .single();
+
+            if (!profile?.company_id) throw new Error('Could not resolve company.');
+            const company_id = profile.company_id;
+
             const itemsToInsert = await Promise.all(data.map(async (row) => {
                 const incomeAccountId = await resolveAccount(row.income_account_id);
                 const expenseAccountId = await resolveAccount(row.expense_account_id);
                 
                 return {
+                    company_id,
                     name: row.name,
                     description: row.description,
                     type: (row.type?.toLowerCase() === "product" ? "product" : "service") as "product" | "service",

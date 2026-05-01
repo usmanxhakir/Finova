@@ -18,7 +18,6 @@ export async function handleSaveExpense(formData: FormData) {
     const payment_account_id = formData.get('payment_account_id') as string
     const amount = Math.round(Number(formData.get('amount')) * 100)
     const notes = formData.get('notes') as string
-    const reference = formData.get('reference') as string
     const receiptFile = formData.get('receipt') as File | null
 
     let receipt_url = formData.get('receipt_url') as string | null
@@ -51,7 +50,6 @@ export async function handleSaveExpense(formData: FormData) {
         payment_account_id,
         amount,
         notes,
-        reference,
         receipt_url,
         status: 'finalized'
     }

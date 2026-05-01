@@ -1,8 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database.types'
 
-type PrefixType = 'invoice_prefix' | 'bill_prefix' | 'expense_prefix'
-type TableType = 'invoices' | 'bills' | 'expenses'
+type PrefixType = 'invoice_prefix' | 'bill_prefix'
+type TableType = 'invoices' | 'bills'
 
 async function generateNumber(
     supabase: SupabaseClient<Database>,
@@ -24,7 +24,7 @@ async function generateNumber(
         throw new Error('Company settings not found')
     }
 
-    const prefix = (company as any)[prefixKey] || (prefixKey === 'invoice_prefix' ? 'INV-' : prefixKey === 'bill_prefix' ? 'BILL-' : 'EXP-')
+    const prefix = (company as any)[prefixKey] || (prefixKey === 'invoice_prefix' ? 'INV-' : 'BILL-')
 
     // 2. Query table for highest existing number with this prefix
     // We fetch the numbers and do the parsing in JS because complex regex/substring in SQL is harder across Supabase/Postgres via JS client for this specific case
@@ -58,8 +58,4 @@ export async function generateInvoiceNumber(supabase: SupabaseClient<Database>):
 
 export async function generateBillNumber(supabase: SupabaseClient<Database>): Promise<string> {
     return generateNumber(supabase, 'bills', 'bill_prefix')
-}
-
-export async function generateExpenseNumber(supabase: SupabaseClient<Database>): Promise<string> {
-    return generateNumber(supabase, 'expenses', 'expense_prefix')
 }

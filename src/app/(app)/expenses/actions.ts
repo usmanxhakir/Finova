@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createExpenseJournalEntry } from '@/lib/accounting/journal-engine'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 
-import { generateExpenseNumber } from '@/lib/accounting/number-generator'
+
 
 export async function handleSaveExpense(formData: FormData) {
     const supabase = await createClient()
@@ -66,27 +66,11 @@ export async function handleSaveExpense(formData: FormData) {
 
         if (updateError) throw new Error(`Failed to update expense: ${updateError.message}`)
     } else {
-        // Generate number only on insert
-        let generatedNumber = await generateExpenseNumber(supabase)
-        expenseData.number = generatedNumber
-
         // Insert
         let { data, error: insertError } = await (supabase.from('expenses') as any)
             .insert(expenseData)
             .select()
             .single()
-
-        // Retry once if duplicate number error occurs (Postgres code 23505)
-        if (insertError?.code === '23505') {
-            generatedNumber = await generateExpenseNumber(supabase)
-            expenseData.number = generatedNumber
-            const retry = await (supabase.from('expenses') as any)
-                .insert(expenseData)
-                .select()
-                .single()
-            data = retry.data
-            insertError = retry.error
-        }
 
         if (insertError) throw new Error(`Failed to create expense: ${insertError.message}`)
         resultId = (data as any).id

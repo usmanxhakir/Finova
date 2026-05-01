@@ -172,9 +172,7 @@ export function ExpenseSheet({
                             </span>
                         )}
                         {!expense && (
-                            <span className="text-[10px] text-muted-foreground italic bg-zinc-50 px-2 py-0.5 rounded border border-dashed">
-                                Auto-numbering
-                            </span>
+                            <div />
                         )}
                     </div>
                     <SheetDescription>

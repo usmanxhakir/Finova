@@ -18,6 +18,8 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
             console.error('[create-invoice] number generation error:', numError)
             throw new Error('Failed to generate invoice number')
         }
+        console.log('[create-invoice] inserting with number:', invoiceNumber, 
+    'type:', typeof invoiceNumber)
         let { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
             .insert({
                 company_id: companyId,

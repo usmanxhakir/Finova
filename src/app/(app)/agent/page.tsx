@@ -1,613 +1,750 @@
-"use client";
+'use client'
 
-import { useState, useRef, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { Sparkles, ClipboardList, ArrowRight, X, AlertTriangle, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
-import { ResolvedIntent, ExecuteResult } from "@/types/agent";
+import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Sparkles, ArrowRight, Loader2, Trash2, AlertTriangle, CheckCircle2, X } from 'lucide-react'
 
-interface DisplayMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  isTyping?: boolean;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface AgentEntry {
+  type: 'BILL' | 'INVOICE' | 'EXPENSE'
+  description: string
+  contact_name: string
+  contact_id: string
+  account_name: string
+  account_id: string
+  payment_account_id: string   // for EXPENSE only
+  payment_account_name: string
+  amount: number               // BIGINT cents
+  date: string                 // YYYY-MM-DD
+  due_date: string             // YYYY-MM-DD
+  notes: string
 }
 
+interface AccountOption {
+  id: string
+  code: string
+  name: string
+  type: string
+  sub_type: string
+}
+
+interface ContactOption {
+  id: string
+  name: string
+  type: string
+}
+
+interface ExecuteResult {
+  success: boolean
+  record_id?: string
+  error?: string
+  intent: string
+}
+
+// ─── Date NLP (client-side, runs before AI call) ──────────────────────────────
+
+function isoDate(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+function resolveRelativeDates(text: string): string {
+  const n = new Date()
+  const y = n.getFullYear()
+  const mo = n.getMonth()
+  const d = n.getDate()
+
+  const lastOfMonth = (year: number, month: number) =>
+    new Date(year, month + 1, 0)
+
+  const mondayOf = (date: Date) => {
+    const day = date.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff)
+  }
+
+  const replacements: [RegExp, string | ((...args: any[]) => string)][] = [
+    [/\btoday\b/gi,          isoDate(n)],
+    [/\byesterday\b/gi,      isoDate(new Date(y, mo, d - 1))],
+    [/\btomorrow\b/gi,       isoDate(new Date(y, mo, d + 1))],
+    [/\bthis week\b/gi,      isoDate(mondayOf(n))],
+    [/\blast week\b/gi,      isoDate(mondayOf(new Date(y, mo, d - 7)))],
+    [/\bthis month\b/gi,     isoDate(lastOfMonth(y, mo))],
+    [/\blast month\b/gi,     isoDate(lastOfMonth(y, mo - 1))],
+    [/\bthis quarter\b/gi,   isoDate(lastOfMonth(y, Math.floor(mo / 3) * 3 + 2))],
+    [/\blast quarter\b/gi,   isoDate(lastOfMonth(y, Math.floor(mo / 3) * 3 - 1))],
+    [/\bthis year\b/gi,      `${y}-12-31`],
+    [/\blast year\b/gi,      `${y - 1}-12-31`],
+    [/\bin (\d+) days?\b/gi, (_, num) => isoDate(new Date(y, mo, d + parseInt(num)))],
+    [/\bdue in (\d+) days?\b/gi, (_, num) => isoDate(new Date(y, mo, d + parseInt(num)))],
+    [/\bnext (\d+) days?\b/gi, (_, num) => isoDate(new Date(y, mo, d + parseInt(num)))],
+  ]
+
+  let out = text
+  for (const [re, date] of replacements) {
+    out = typeof date === 'string'
+      ? out.replace(re, date)
+      : out.replace(re, date as unknown as string)
+  }
+  return out
+}
+
+// ─── Fuzzy match ──────────────────────────────────────────────────────────────
+
+function fuzzyScore(q: string, t: string): number {
+  const a = q.toLowerCase().trim()
+  const b = t.toLowerCase().trim()
+  if (!a || !b) return 0
+  if (b.includes(a) || a.includes(b)) return 1
+  const aw = a.split(/\s+/)
+  const bw = b.split(/\s+/)
+  const hits = aw.filter(w => w.length > 2 && bw.some((bx: string) => bx.includes(w) || w.includes(bx)))
+  return hits.length / Math.max(aw.length, bw.length)
+}
+
+function fuzzyFindContact(query: string, list: ContactOption[]): ContactOption | null {
+  if (!query) return null
+  let best: ContactOption | null = null
+  let top = 0
+  for (const item of list) {
+    const s = fuzzyScore(query, item.name)
+    if (s > top) { top = s; best = item }
+  }
+  return top >= 0.35 ? best : null
+}
+
+function fuzzyFindAccount(query: string, list: AccountOption[]): AccountOption | null {
+  if (!query) return null
+  let best: AccountOption | null = null
+  let top = 0
+  for (const item of list) {
+    const s = fuzzyScore(query, item.name)
+    if (s > top) { top = s; best = item }
+  }
+  return top >= 0.35 ? best : null
+}
+
+// ─── Account filter helpers ───────────────────────────────────────────────────
+
+function expenseAccounts(accounts: AccountOption[]) {
+  return accounts.filter(a =>
+    ['expense', 'cost_of_goods_sold', 'other_expense'].includes(a.sub_type)
+  )
+}
+
+function revenueAccounts(accounts: AccountOption[]) {
+  return accounts.filter(a =>
+    ['income', 'other_income'].includes(a.sub_type)
+  )
+}
+
+function bankAccounts(accounts: AccountOption[]) {
+  return accounts.filter(a =>
+    ['bank', 'cash', 'credit_card', 'other_current_asset'].includes(a.sub_type)
+  )
+}
+
+function vendorContacts(contacts: ContactOption[]) {
+  return contacts.filter(c => c.type === 'vendor' || c.type === 'both')
+}
+
+function customerContacts(contacts: ContactOption[]) {
+  return contacts.filter(c => c.type === 'customer' || c.type === 'both')
+}
+
+const todayISO = new Date().toISOString().split('T')[0]
+const in30Days = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0]
+
+const BETA_KEY = 'finova_agent_beta_seen'
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function AgentPage() {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
-  const [isInitializing, setIsInitializing] = useState<boolean>(true);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [pendingIntents, setPendingIntents] = useState<ResolvedIntent[]>([]);
-  const [executeResults, setExecuteResults] = useState<ExecuteResult[] | null>(null);
-  const [conversationHistory, setConversationHistory] = useState<{role: string, content: string}[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const supabase = createClient();
+  const supabase = createClient()
 
+  const [showBeta, setShowBeta] = useState<boolean>(false)
+  const [accounts, setAccounts] = useState<AccountOption[]>([])
+  const [contacts, setContacts] = useState<ContactOption[]>([])
+  const [input, setInput] = useState<string>('')
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+  const [isExecuting, setIsExecuting] = useState<boolean>(false)
+  const [entries, setEntries] = useState<AgentEntry[]>([])
+  const [results, setResults] = useState<ExecuteResult[] | null>(null)
+  const [clarification, setClarification] = useState<string | null>(null)
+  const [phase, setPhase] = useState<'input' | 'review' | 'done'>('input')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Beta modal on first visit
   useEffect(() => {
-    async function loadLastConversation() {
-      try {
-        // eslint-disable-next-line
-        const { data: lastConversation } = await (supabase as any)
-          .from('agent_conversations')
-          .select('id')
-          .order('last_message_at', { ascending: false })
-          .limit(1)
-          .maybeSingle() as { data: { id: string } | null, error: unknown };
-
-        if (lastConversation) {
-          setConversationId(lastConversation.id);
-          // eslint-disable-next-line
-          const { data: msgs } = await (supabase as any)
-            .from('agent_messages')
-            .select('id, role, content, created_at')
-            .eq('conversation_id', lastConversation.id)
-            .order('created_at', { ascending: true }) as unknown as {
-              data: Array<{
-                id: string
-                role: string
-                content: string
-                created_at: string
-              }> | null
-              error: unknown
-            };
-
-          if (msgs && msgs.length > 0) {
-            setMessages(msgs.map(m => ({ id: m.id, role: m.role as 'user'|'assistant', content: m.content })));
-            setConversationHistory(msgs.map(m => ({ role: m.role, content: m.content })));
-          }
-        }
-      } finally {
-        setIsInitializing(false);
-      }
+    if (typeof window !== 'undefined' && !localStorage.getItem(BETA_KEY)) {
+      setShowBeta(true)
     }
-    loadLastConversation();
-  }, [supabase]);
+  }, [])
 
+  // Load accounts and contacts once
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    async function load() {
+      // eslint-disable-next-line
+      const { data: accs } = await (supabase as any)
+        .from('accounts')
+        .select('id, code, name, type, sub_type')
+        .eq('is_active', true) as unknown as { data: AccountOption[] | null }
 
-  async function handleNewConversation() {
-    setMessages([]);
-    setConversationHistory([]);
-    setPendingIntents([]);
-    setExecuteResults(null);
-    setInput('');
-    setIsLoading(false);
-    
-    // eslint-disable-next-line
-    const { data } = await (supabase as any)
-      .from('agent_conversations')
-      .insert({ title: 'New Conversation' })
-      .select('id')
-      .single() as unknown as { data: { id: string } | null, error: unknown };
-      
-    if (data) {
-      setConversationId(data.id);
+      // eslint-disable-next-line
+      const { data: cons } = await (supabase as any)
+        .from('contacts')
+        .select('id, name, type')
+        .eq('is_active', true) as unknown as { data: ContactOption[] | null }
+
+      if (accs) setAccounts(accs)
+      if (cons) setContacts(cons)
+    }
+    load()
+  // eslint-disable-next-line
+  }, [])
+
+  function dismissBeta() {
+    localStorage.setItem(BETA_KEY, '1')
+    setShowBeta(false)
+  }
+
+  function buildEntry(raw: {
+    type?: string
+    description?: string
+    contact_name?: string
+    account_name?: string
+    amount?: number
+    date?: string
+    due_date?: string
+    notes?: string
+  }): AgentEntry {
+    const type = (['BILL', 'INVOICE', 'EXPENSE'].includes(raw.type ?? '') ? raw.type : 'EXPENSE') as AgentEntry['type']
+
+    // Resolve account
+    const accountPool = type === 'INVOICE' ? revenueAccounts(accounts) : expenseAccounts(accounts)
+    let account: AccountOption | null = null
+    if (raw.account_name) {
+      account = accounts.find(a => a.name.toLowerCase() === raw.account_name!.toLowerCase()) ?? null
+      if (!account) account = fuzzyFindAccount(raw.account_name, accountPool)
+    }
+
+    // Resolve contact
+    const contactPool = type === 'INVOICE' ? customerContacts(contacts) : vendorContacts(contacts)
+    let contact: ContactOption | null = null
+    if (raw.contact_name) {
+      contact = contacts.find(c => c.name.toLowerCase() === raw.contact_name!.toLowerCase()) ?? null
+      if (!contact) contact = fuzzyFindContact(raw.contact_name, contactPool)
+    }
+
+    // Default payment account: first bank account
+    const defaultBank = bankAccounts(accounts)[0]
+
+    // Normalize amount to cents — if AI returned dollars accidentally, fix it
+    let amount = typeof raw.amount === 'number' ? raw.amount : 0
+    if (amount > 0 && amount < 500 && amount % 1 !== 0) {
+      amount = Math.round(amount * 100)
+    }
+
+    return {
+      type,
+      description: raw.description ?? '',
+      contact_name: contact?.name ?? raw.contact_name ?? '',
+      contact_id: contact?.id ?? '',
+      account_name: account?.name ?? raw.account_name ?? '',
+      account_id: account?.id ?? '',
+      payment_account_id: defaultBank?.id ?? '',
+      payment_account_name: defaultBank?.name ?? '',
+      amount,
+      date: raw.date ?? todayISO,
+      due_date: raw.due_date ?? in30Days,
+      notes: raw.notes ?? '',
     }
   }
 
-  async function saveMessage(role: 'user' | 'assistant', content: string) {
-    let cid = conversationId;
-    if (!cid) {
-      // eslint-disable-next-line
-      const { data } = await (supabase as any)
-        .from('agent_conversations')
-        .insert({ title: 'New Conversation' })
-        .select('id')
-        .single() as unknown as { data: { id: string } | null, error: unknown };
-      if (data) {
-        cid = data.id;
-        setConversationId(data.id);
-      }
-    }
-    
-    if (cid) {
-      // eslint-disable-next-line
-      await (supabase as any).from('agent_messages').insert({
-        conversation_id: cid,
-        role,
-        content
-      });
-      // eslint-disable-next-line
-      await (supabase as any).from('agent_conversations').update({ last_message_at: new Date().toISOString() }).eq('id', cid);
-    }
-  }
+  async function handleSubmit() {
+    if (!input.trim() || isLoading) return
+    setIsLoading(true)
+    setClarification(null)
 
-  async function sendMessage(text: string) {
-    if (!text.trim() || isLoading) return;
-
-    const userMessage: DisplayMessage = { id: Date.now().toString(), role: 'user', content: text };
-    setMessages(prev => [...prev, userMessage]);
-    setConversationHistory(prev => [...prev, { role: 'user', content: text }]);
-    setInput('');
-    setIsLoading(true);
-
-    saveMessage('user', text);
-
-    const typingMsg: DisplayMessage = { id: 'typing', role: 'assistant', content: '', isTyping: true };
-    setMessages(prev => [...prev, typingMsg]);
+    const resolved = resolveRelativeDates(input)
 
     try {
       const res = await fetch('/api/agent/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, conversation_history: conversationHistory })
-      });
-      const data = await res.json();
-      
-      setMessages(prev => prev.filter(m => m.id !== 'typing'));
-
-      let assistantContent = "";
+        body: JSON.stringify({ message: resolved }),
+      })
+      const data = await res.json() as {
+        entries?: unknown[]
+        clarification_needed?: string | null
+      }
 
       if (data.clarification_needed) {
-        assistantContent = data.clarification_needed;
-      } else {
-        const hasActionable = data.intents.some((i: ResolvedIntent) => !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent));
-        const questions = data.intents.filter((i: ResolvedIntent) => ['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent));
-        
-        let answers = questions.map((q: ResolvedIntent) => q.data.answer).filter(Boolean).join('\n\n');
-        
-        if (answers) {
-          assistantContent += answers;
-        }
-        
-        if (hasActionable) {
-          const actionCount = data.intents.length - questions.length;
-          if (assistantContent) assistantContent += '\n\n';
-          assistantContent += `I found ${actionCount} transaction(s) to record. Review them on the right →`;
-          setPendingIntents(data.intents.filter((i: ResolvedIntent) => !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)));
-          setExecuteResults(null);
-        }
+        setClarification(data.clarification_needed)
+        setIsLoading(false)
+        return
       }
 
-      if (assistantContent) {
-        const astMsg: DisplayMessage = { id: Date.now().toString() + 'a', role: 'assistant', content: assistantContent };
-        setMessages(prev => [...prev, astMsg]);
-        setConversationHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
-        saveMessage('assistant', assistantContent);
-      }
-      
-    } catch (err) {
-      setMessages(prev => prev.filter(m => m.id !== 'typing'));
-      const errMsg: DisplayMessage = { id: Date.now().toString() + 'e', role: 'assistant', content: "Sorry, I encountered an error communicating with the server." };
-      setMessages(prev => [...prev, errMsg]);
+      const built = (data.entries ?? []).map((e) => buildEntry(e as Parameters<typeof buildEntry>[0]))
+      setEntries(built)
+      setPhase(built.length > 0 ? 'review' : 'input')
+    } catch {
+      setClarification("Couldn't connect to the AI. Please try again.")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }
 
-  function updateIntent(index: number, field: string, value: any) {
-    setPendingIntents(prev => prev.map((intent, i) => 
-      i === index 
-        ? { ...intent, data: { ...intent.data, [field]: value } }
-        : intent
-    ));
-  }
-  
-  function updateLineItemRate(index: number, rateValue: number) {
-    setPendingIntents(prev => prev.map((intent, i) => {
-      if (i !== index) return intent;
-      const lineItems = [...(intent.data.line_items || [])];
-      if (lineItems.length > 0) {
-        lineItems[0] = { ...lineItems[0], rate: rateValue };
-      } else {
-        lineItems.push({ description: 'Item', quantity: 1, rate: rateValue });
-      }
-      return { ...intent, data: { ...intent.data, line_items: lineItems } };
-    }));
+  function updateEntry(idx: number, patch: Partial<AgentEntry>) {
+    setEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e))
   }
 
-  function removeIntent(index: number) {
-    setPendingIntents(prev => prev.filter((_, i) => i !== index));
+  function removeEntry(idx: number) {
+    setEntries(prev => {
+      const next = prev.filter((_, i) => i !== idx)
+      if (next.length === 0) setPhase('input')
+      return next
+    })
   }
 
   async function executeAll() {
-    const readyIntents = pendingIntents.filter((_, i) => getIntentStatus(pendingIntents[i]) === 'Ready');
-    if (readyIntents.length === 0) return;
-    
-    setIsLoading(true);
+    if (!entries.length || isExecuting) return
+    setIsExecuting(true)
+
+    // Map entries to the format the execute route expects (ResolvedIntent[])
+    const intents = entries.map(e => ({
+      intent: e.type === 'BILL' ? 'CREATE_BILL' : e.type === 'INVOICE' ? 'CREATE_INVOICE' : 'CREATE_EXPENSE',
+      display_summary: e.description,
+      data: e.type === 'BILL' ? {
+        vendor_name: e.contact_name,
+        line_items: [{ description: e.description, quantity: 1, rate: e.amount, amount: e.amount }],
+        due_date: e.due_date,
+        notes: e.notes,
+        account_id: e.account_id,
+      } : e.type === 'INVOICE' ? {
+        contact_name: e.contact_name,
+        line_items: [{ description: e.description, quantity: 1, rate: e.amount, amount: e.amount }],
+        due_date: e.due_date,
+        notes: e.notes,
+        account_id: e.account_id,
+      } : {
+        payee: e.contact_name || e.description,
+        amount: e.amount,
+        description: e.description,
+        account_id: e.account_id,
+        payment_account_id: e.payment_account_id,
+        date: e.date,
+        notes: e.notes,
+      },
+      resolved: {
+        contact_id: e.contact_id || null,
+        account_id: e.account_id || null,
+        payment_account_id: e.payment_account_id || null,
+      },
+    }))
+
     try {
       const res = await fetch('/api/agent/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intents: readyIntents })
-      });
-      const data = await res.json();
-      setExecuteResults(data.results);
-      
-      const successCount = data.results.filter((r: any) => r.success).length;
-      const assistantContent = `Done! Created ${successCount} records successfully.`;
-      const astMsg: DisplayMessage = { id: Date.now().toString() + 'done', role: 'assistant', content: assistantContent };
-      setMessages(prev => [...prev, astMsg]);
-      setConversationHistory(prev => [...prev, { role: 'assistant', content: assistantContent }]);
-      saveMessage('assistant', assistantContent);
-      
-    } catch (err) {
-      console.error(err);
+        body: JSON.stringify({ intents }),
+      })
+      const data = await res.json() as { results: ExecuteResult[] }
+      setResults(data.results)
+      setPhase('done')
+    } catch {
+      setClarification('Execution failed. Please try again.')
     } finally {
-      setIsLoading(false);
+      setIsExecuting(false)
     }
   }
 
-  function getIntentBadge(intent: string) {
-    switch(intent) {
-      case 'CREATE_INVOICE': return { label: 'INVOICE', bg: '#ede9fe', color: '#7c3aed' };
-      case 'CREATE_BILL': return { label: 'BILL', bg: '#eff6ff', color: '#2563eb' };
-      case 'CREATE_EXPENSE': return { label: 'EXPENSE', bg: '#fffbeb', color: '#d97706' };
-      case 'CREATE_CONTACT': return { label: 'CONTACT', bg: '#f0fdf4', color: '#16a34a' };
-      case 'CREATE_ITEM': return { label: 'ITEM', bg: '#f0fdfa', color: '#0d9488' };
-      case 'RUN_REPORT': return { label: 'REPORT', bg: '#eef2ff', color: '#4338ca' };
-      default: return { label: 'UNKNOWN', bg: '#f3f4f6', color: '#6b7280' };
-    }
+  function resetSession() {
+    setEntries([])
+    setResults(null)
+    setClarification(null)
+    setInput('')
+    setPhase('input')
+    setTimeout(() => textareaRef.current?.focus(), 50)
   }
 
-  function getIntentStatus(intent: ResolvedIntent) {
-    // Treat as Ready if the user has provided the required text field even if ID isn't resolved, 
-    // because they can only edit the text field client-side and can't re-resolve it here.
-    switch (intent.intent) {
-      case 'CREATE_INVOICE':
-        if (!intent.data.contact_name && !intent.resolved.contact_id) return 'Review';
-        if (!intent.data.line_items?.length || intent.data.line_items[0].rate <= 0) return 'Review';
-        return 'Ready';
-      case 'CREATE_BILL':
-        if (!intent.data.vendor_name && !intent.resolved.contact_id) return 'Review';
-        if (!intent.data.line_items?.length || intent.data.line_items[0].rate <= 0) return 'Review';
-        return 'Ready';
-      case 'CREATE_EXPENSE':
-        if (!intent.data.payee) return 'Review';
-        if (!(intent.data.amount! > 0)) return 'Review';
-        return 'Ready';
-      case 'CREATE_CONTACT':
-        if (!intent.data.name) return 'Review';
-        return 'Ready';
-      case 'CREATE_ITEM':
-        if (!intent.data.item_name) return 'Review';
-        return 'Ready';
-      case 'RUN_REPORT':
-      case 'ANSWER_QUESTION':
-        return 'Ready';
-      default:
-        return 'Review';
-    }
+  const totalCents = entries.reduce((s, e) => s + e.amount, 0)
+  const fmtCents = (c: number) =>
+    (c / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+
+  const typeBadge = (type: AgentEntry['type']) => {
+    if (type === 'BILL')    return { label: 'BILL',    bg: '#eff6ff', color: '#2563eb' }
+    if (type === 'INVOICE') return { label: 'INVOICE', bg: '#ede9fe', color: '#7c3aed' }
+    return                           { label: 'EXPENSE', bg: '#fffbeb', color: '#d97706' }
   }
 
-  const handleSuggestionClick = (text: string) => {
-    sendMessage(text);
-  };
-
-  const allReady = pendingIntents.every(i => getIntentStatus(i) === 'Ready') && pendingIntents.length > 0;
+  const suggestions = [
+    "Bill from AWS $340 for cloud hosting, due in 30 days",
+    "Invoice Acme Corp $1,500 for web design, due next month",
+    "Paid lunch $45 from checking today",
+    "Bill from supplier $800 and expense $120 software yesterday",
+  ]
 
   return (
-    <div className="p-6 md:p-8 flex flex-col h-screen overflow-hidden bg-[#f4f4f8]">
-      <div className="flex justify-between items-end mb-6 shrink-0">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-[#111118] font-serif">AI Agent</h1>
-          <p className="text-[#6b7280] mt-1">Describe transactions in plain English — I'll handle the accounting.</p>
+    <div className="p-6 md:p-8 max-w-4xl mx-auto">
+
+      {/* ── Beta Modal ── */}
+      {showBeta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                <AlertTriangle size={18} className="text-amber-500" />
+              </div>
+              <div>
+                <div className="font-semibold text-[#111118]">AI Agent — Beta Feature</div>
+                <div className="text-[11px] text-[#9ca3af]">Powered by Llama 3.3 via Groq</div>
+              </div>
+            </div>
+            <p className="text-sm text-[#374151] mb-3">
+              The AI agent can parse natural language into accounting entries, but it's still learning. Before executing any transaction, please:
+            </p>
+            <ul className="text-sm text-[#374151] space-y-1.5 mb-5 list-none">
+              {[
+                'Verify all amounts are correct',
+                'Confirm the right account is selected',
+                'Check dates before posting',
+                'Review vendor/customer names',
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2">
+                  <CheckCircle2 size={14} className="text-[#7c3aed] mt-0.5 shrink-0" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-[#9ca3af] mb-4">All records are created as drafts. You can review and finalize them in the respective pages.</p>
+            <button
+              onClick={dismissBeta}
+              className="w-full bg-[#7c3aed] text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-[#6d28d9]"
+            >
+              I understand — let's go
+            </button>
+          </div>
         </div>
-        <button 
-          onClick={handleNewConversation}
-          className="bg-white border border-[#e5e7eb] rounded-lg text-[#374151] px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          New Conversation
-        </button>
+      )}
+
+      {/* ── Page Header ── */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-3xl font-bold tracking-tight text-[#111118] font-serif">AI Agent</h1>
+            <span className="text-[10px] font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full tracking-wide">BETA</span>
+          </div>
+          <p className="text-[#6b7280] mt-1 text-sm">Describe transactions in plain English — review and post them in seconds.</p>
+        </div>
+        {phase !== 'input' && (
+          <button onClick={resetSession} className="text-sm text-[#6b7280] hover:text-[#111118] border border-[#e5e7eb] rounded-lg px-3 py-1.5">
+            ← New entry
+          </button>
+        )}
       </div>
 
-      <div className="flex bg-white border border-[#e5e7eb] rounded-xl overflow-hidden w-full max-h-full" style={{ height: 'calc(100vh - 160px)' }}>
-        
-        {/* Left Panel */}
-        <div className="w-1/2 flex flex-col border-r border-[#e5e7eb]">
-          <div className="flex items-center gap-2 p-4 border-b border-[#e5e7eb] shrink-0">
-            <Sparkles size={18} className="text-[#7c3aed]" />
-            <div>
-              <div className="font-semibold text-sm text-[#111118]">Assistant</div>
-              <div className="text-[11px] text-[#9ca3af]">Powered by DeepSeek via OpenRouter</div>
+      {/* ── Input Phase ── */}
+      {phase === 'input' && (
+        <div className="bg-white border border-[#e5e7eb] rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles size={16} className="text-[#7c3aed]" />
+            <span className="text-sm font-medium text-[#111118]">What happened?</span>
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit() }}
+            placeholder='"Bill from AWS $340 for cloud hosting due in 30 days and paid $45 lunch from checking today"'
+            className="w-full border border-[#e5e7eb] rounded-xl p-3.5 text-sm text-[#111118] resize-none focus:outline-none focus:border-[#7c3aed] min-h-[100px]"
+            rows={3}
+            autoFocus
+          />
+
+          {clarification && (
+            <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-amber-800">{clarification}</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-[11px] text-[#9ca3af]">⌘↵ to submit · Records created as drafts</p>
+            <button
+              onClick={handleSubmit}
+              disabled={!input.trim() || isLoading}
+              className="flex items-center gap-2 bg-[#7c3aed] text-white rounded-xl px-4 py-2 text-sm font-semibold hover:bg-[#6d28d9] disabled:opacity-50"
+            >
+              {isLoading
+                ? <><Loader2 size={14} className="animate-spin" /> Analyzing...</>
+                : <>Parse entries <ArrowRight size={14} /></>}
+            </button>
+          </div>
+
+          <div className="mt-6 border-t border-[#f3f4f6] pt-5">
+            <p className="text-[11px] text-[#9ca3af] mb-3 uppercase tracking-wide font-medium">Try an example</p>
+            <div className="grid grid-cols-2 gap-2">
+              {suggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setInput(s)}
+                  className="text-left text-[13px] text-[#374151] bg-[#f9fafb] border border-[#e5e7eb] rounded-xl p-3 hover:border-[#7c3aed] transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
-            {isInitializing && messages.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            ) : !isInitializing && messages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center text-[#6b7280]">
-                <Sparkles size={32} className="text-[#7c3aed] opacity-60 mb-4" />
-                <h3 className="text-[#111118] font-medium mb-1">Ask me anything</h3>
-                <p className="text-sm mb-6 max-w-sm">Record bills, invoices, expenses, create contacts, run reports, or ask questions about your books.</p>
-                <div className="grid grid-cols-2 gap-3 max-w-lg">
-                  {[
-                    "Bill from AWS $340 for cloud hosting, due in 30 days",
-                    "Invoice for Acme Corp — web design $1,500",
-                    "Expense: lunch $45, paid from checking account",
-                    "What were my total expenses this month?"
-                  ].map((suggestion, i) => (
-                    <button 
-                      key={i}
-                      onClick={() => handleSuggestionClick(suggestion)}
-                      className="bg-white border border-[#e5e7eb] rounded-lg p-3 text-[13px] text-left hover:border-[#7c3aed] transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`
-                    text-[14px] px-3.5 py-2.5 max-w-[85%] whitespace-pre-wrap
-                    ${msg.role === 'user' 
-                      ? 'bg-[#7c3aed] text-white rounded-[18px_18px_4px_18px]' 
-                      : 'bg-[#f3f4f6] text-[#111118] rounded-[18px_18px_18px_4px]'}
-                  `}>
-                    {msg.isTyping ? (
-                      <div className="flex gap-1 h-5 items-center px-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '0ms' }} />
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '150ms' }} />
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '300ms' }} />
-                      </div>
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
+      {/* ── Review Phase ── */}
+      {phase === 'review' && (
+        <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-3 p-4 border-b border-[#e5e7eb]">
+            <span className="text-[11px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 px-2.5 py-1 rounded-full tracking-wide">
+              {entries.length} TRANSACTION{entries.length > 1 ? 'S' : ''} DETECTED
+            </span>
+            <span className="text-[12px] text-[#9ca3af]">Review and edit before posting</span>
           </div>
 
-          <div className="border-t border-[#e5e7eb] p-4 shrink-0 bg-white">
-            <div className="relative flex items-center">
-              <textarea
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage(input);
-                  }
-                }}
-                placeholder="Describe what you need..."
-                className="w-full border border-[#e5e7eb] rounded-[10px] py-2.5 pl-3 pr-12 text-sm resize-none focus:outline-none focus:border-[#7c3aed] min-h-[44px] max-h-[100px]"
-                rows={1}
-              />
-              <button 
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 bg-[#7c3aed] text-white p-1.5 rounded-full disabled:opacity-50 flex items-center justify-center"
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-[13px]">
+              <thead>
+                <tr className="bg-[#f9fafb] border-b border-[#e5e7eb]">
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] w-6">#</th>
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] w-20">Type</th>
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[150px]">Description</th>
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[140px]">Contact</th>
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[160px]">Account</th>
+                  {entries.some(e => e.type === 'EXPENSE') && (
+                    <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[140px]">Paid From</th>
+                  )}
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[120px]">Date</th>
+                  {entries.some(e => e.type !== 'EXPENSE') && (
+                    <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[120px]">Due Date</th>
+                  )}
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] text-right min-w-[100px]">Amount</th>
+                  <th className="py-2.5 px-3 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry, idx) => {
+                  const badge = typeBadge(entry.type)
+                  const contactPool = entry.type === 'INVOICE' ? customerContacts(contacts) : vendorContacts(contacts)
+                  const accountPool = entry.type === 'INVOICE' ? revenueAccounts(accounts) : expenseAccounts(accounts)
+                  const bankPool = bankAccounts(accounts)
+
+                  return (
+                    <tr key={idx} className={`border-b border-[#f3f4f6] ${idx % 2 === 1 ? 'bg-[#fafafa]' : 'bg-white'}`}>
+                      <td className="px-3 py-2 text-[11px] text-[#9ca3af] font-mono">{idx + 1}</td>
+
+                      <td className="px-3 py-2">
+                        <select
+                          value={entry.type}
+                          onChange={e => updateEntry(idx, { type: e.target.value as AgentEntry['type'] })}
+                          className="text-[11px] font-semibold px-2 py-1 rounded border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
+                          style={{ backgroundColor: badge.bg, color: badge.color }}
+                        >
+                          <option value="BILL">BILL</option>
+                          <option value="INVOICE">INVOICE</option>
+                          <option value="EXPENSE">EXPENSE</option>
+                        </select>
+                      </td>
+
+                      <td className="px-3 py-2">
+                        <input
+                          value={entry.description}
+                          onChange={e => updateEntry(idx, { description: e.target.value })}
+                          className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white"
+                          placeholder="Description"
+                        />
+                      </td>
+
+                      <td className="px-3 py-2">
+                        <select
+                          value={entry.contact_id}
+                          onChange={e => {
+                            const c = contacts.find(x => x.id === e.target.value)
+                            updateEntry(idx, { contact_id: e.target.value, contact_name: c?.name ?? '' })
+                          }}
+                          className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
+                        >
+                          <option value="">
+                            {entry.contact_name || (entry.type === 'INVOICE' ? 'Select customer…' : 'Select vendor…')}
+                          </option>
+                          {contactPool.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td className="px-3 py-2">
+                        <select
+                          value={entry.account_id}
+                          onChange={e => {
+                            const a = accounts.find(x => x.id === e.target.value)
+                            updateEntry(idx, { account_id: e.target.value, account_name: a?.name ?? '' })
+                          }}
+                          className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
+                        >
+                          <option value="">
+                            {entry.account_name || 'Select account…'}
+                          </option>
+                          {accountPool.map(a => (
+                            <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {entries.some(e => e.type === 'EXPENSE') && (
+                        <td className="px-3 py-2">
+                          {entry.type === 'EXPENSE' ? (
+                            <select
+                              value={entry.payment_account_id}
+                              onChange={e => {
+                                const a = accounts.find(x => x.id === e.target.value)
+                                updateEntry(idx, { payment_account_id: e.target.value, payment_account_name: a?.name ?? '' })
+                              }}
+                              className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
+                            >
+                              <option value="">{entry.payment_account_name || 'Select account…'}</option>
+                              {bankPool.map(a => (
+                                <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                              ))}
+                            </select>
+                          ) : <span className="text-[#d1d5db]">—</span>}
+                        </td>
+                      )}
+
+                      <td className="px-3 py-2">
+                        <input
+                          type="date"
+                          value={entry.date}
+                          onChange={e => updateEntry(idx, { date: e.target.value })}
+                          className="border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white text-[13px]"
+                        />
+                      </td>
+
+                      {entries.some(e => e.type !== 'EXPENSE') && (
+                        <td className="px-3 py-2">
+                          {entry.type !== 'EXPENSE' ? (
+                            <input
+                              type="date"
+                              value={entry.due_date}
+                              onChange={e => updateEntry(idx, { due_date: e.target.value })}
+                              className="border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white text-[13px]"
+                            />
+                          ) : <span className="text-[#d1d5db]">—</span>}
+                        </td>
+                      )}
+
+                      <td className="px-3 py-2">
+                        <div className="relative flex items-center justify-end">
+                          <span className="absolute left-2 text-[#9ca3af] text-[13px]">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={(entry.amount / 100).toFixed(2)}
+                            onChange={e => {
+                              const cents = Math.round(parseFloat(e.target.value || '0') * 100)
+                              updateEntry(idx, { amount: cents })
+                            }}
+                            className="w-24 border border-transparent rounded-lg pl-5 pr-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white text-right font-mono text-[13px]"
+                          />
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => removeEntry(idx)}
+                          className="text-[#d1d5db] hover:text-red-500 p-1 rounded"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-4 py-3.5 border-t border-[#e5e7eb] bg-[#f9fafb]">
+            <div className="flex items-center gap-6">
+              <div className="text-[12px] text-[#6b7280]">
+                Total <span className="font-mono font-semibold text-[#111118] ml-1">{fmtCents(totalCents)}</span>
+              </div>
+              <div className="text-[12px] text-[#6b7280]">
+                {entries.length} transaction{entries.length > 1 ? 's' : ''}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={resetSession}
+                className="text-sm text-[#6b7280] hover:text-[#111118] px-3 py-1.5 border border-[#e5e7eb] rounded-lg bg-white"
               >
-                <ArrowRight size={16} />
+                ← Edit prompt
+              </button>
+              <button
+                onClick={executeAll}
+                disabled={isExecuting || !entries.length}
+                className="flex items-center gap-2 bg-[#7c3aed] text-white rounded-xl px-5 py-2 text-sm font-semibold hover:bg-[#6d28d9] disabled:opacity-50"
+              >
+                {isExecuting
+                  ? <><Loader2 size={14} className="animate-spin" /> Posting...</>
+                  : <>Post {entries.length} transaction{entries.length > 1 ? 's' : ''} <ArrowRight size={14} /></>}
               </button>
             </div>
-            <div className="text-[11px] text-[#9ca3af] mt-2 text-center">
-              Records are created as drafts. Review before finalizing.
-            </div>
           </div>
         </div>
+      )}
 
-        {/* Right Panel */}
-        <div className="w-1/2 flex flex-col bg-[#f4f4f8]">
-          <div className="flex items-center gap-2 p-4 border-b border-[#e5e7eb] shrink-0 bg-white">
-            <ClipboardList size={18} className="text-[#374151]" />
-            <div>
-              <div className="font-semibold text-sm text-[#111118]">Review & Execute</div>
-              <div className="text-[11px] text-[#9ca3af]">Edit parsed transactions before saving</div>
-            </div>
+      {/* ── Done Phase ── */}
+      {phase === 'done' && results && (
+        <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-[#e5e7eb] flex items-center gap-3">
+            <CheckCircle2 size={18} className="text-green-500" />
+            <span className="font-semibold text-[#111118]">
+              {results.filter(r => r.success).length} of {results.length} transaction{results.length > 1 ? 's' : ''} posted
+            </span>
           </div>
-
-          <div className="flex-1 overflow-y-auto bg-white">
-            {pendingIntents.length === 0 ? (
-              <div className="h-full flex items-center justify-center p-8">
-                <div className="border-[1.5px] border-dashed border-[#e5e7eb] rounded-xl p-10 flex flex-col items-center justify-center text-center text-[#6b7280] w-full max-w-sm">
-                  <ClipboardList size={32} className="text-[#9ca3af] mb-4" />
-                  <h3 className="text-[#111118] font-medium mb-1">Nothing to review yet</h3>
-                  <p className="text-sm">Parsed transactions will appear here.<br/>Review and edit them before executing.</p>
-                </div>
+          <div className="divide-y divide-[#f3f4f6]">
+            {results.map((r, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                {r.success
+                  ? <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                  : <X size={14} className="text-red-500 shrink-0" />}
+                <span className="text-[13px] text-[#374151]">
+                  {entries[i]?.description || r.intent}
+                </span>
+                {r.success && r.record_id && (
+                  <a
+                    href={`/${r.intent === 'CREATE_INVOICE' ? 'invoices' : r.intent === 'CREATE_BILL' ? 'bills' : 'expenses'}/${r.record_id}`}
+                    className="ml-auto text-[12px] text-[#7c3aed] hover:underline"
+                  >
+                    View →
+                  </a>
+                )}
+                {!r.success && (
+                  <span className="ml-auto text-[12px] text-red-500">{r.error}</span>
+                )}
               </div>
-            ) : (
-              <table className="w-full text-left border-collapse">
-                <thead className="sticky top-0 bg-[#f9fafb] border-b border-[#e5e7eb] z-10">
-                  <tr>
-                    <th className="py-2.5 px-4 text-[11px] tracking-[0.08em] font-semibold uppercase text-[#6b7280] w-[15%]">Type</th>
-                    <th className="py-2.5 px-4 text-[11px] tracking-[0.08em] font-semibold uppercase text-[#6b7280] w-[40%]">Details</th>
-                    <th className="py-2.5 px-4 text-[11px] tracking-[0.08em] font-semibold uppercase text-[#6b7280] w-[20%]">Amount</th>
-                    <th className="py-2.5 px-4 text-[11px] tracking-[0.08em] font-semibold uppercase text-[#6b7280] w-[15%]">Status</th>
-                    <th className="py-2.5 px-4 text-[11px] tracking-[0.08em] font-semibold uppercase text-[#6b7280] w-[10%] text-center">×</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingIntents.map((intent, idx) => {
-                    const badge = getIntentBadge(intent.intent);
-                    const status = getIntentStatus(intent);
-                    const result = executeResults?.find(r => r.intent === intent.intent); // In reality matching by index is better if multiple of same type
-                    // Actually, let's match by index for results since multiple identical intents could exist
-                    const rowResult = executeResults ? executeResults[idx] : null;
-
-                    let identifierField = '';
-                    let identifierLabel = '';
-                    let identifierValue = '';
-                    let amountValue = 0;
-                    let showWarning = false;
-
-                    if (intent.intent === 'CREATE_INVOICE') {
-                      identifierField = 'contact_name';
-                      identifierLabel = 'Customer';
-                      identifierValue = intent.data.contact_name || '';
-                      amountValue = intent.data.line_items?.[0]?.rate || 0;
-                      showWarning = !intent.resolved.contact_id;
-                    } else if (intent.intent === 'CREATE_BILL') {
-                      identifierField = 'vendor_name';
-                      identifierLabel = 'Vendor';
-                      identifierValue = intent.data.vendor_name || '';
-                      amountValue = intent.data.line_items?.[0]?.rate || 0;
-                      showWarning = !intent.resolved.contact_id;
-                    } else if (intent.intent === 'CREATE_EXPENSE') {
-                      identifierField = 'payee';
-                      identifierLabel = 'Payee';
-                      identifierValue = intent.data.payee || '';
-                      amountValue = intent.data.amount || 0;
-                    } else if (intent.intent === 'CREATE_CONTACT') {
-                      identifierField = 'name';
-                      identifierLabel = 'Name';
-                      identifierValue = intent.data.name || '';
-                    } else if (intent.intent === 'CREATE_ITEM') {
-                      identifierField = 'item_name';
-                      identifierLabel = 'Name';
-                      identifierValue = intent.data.item_name || '';
-                      amountValue = intent.data.default_rate || 0;
-                    }
-
-                    return (
-                      <tr key={idx} className="border-b border-[#f3f4f6]">
-                        <td className="p-4 align-top">
-                          <span 
-                            className="text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap"
-                            style={{ backgroundColor: badge.bg, color: badge.color }}
-                          >
-                            {badge.label}
-                          </span>
-                        </td>
-                        <td className="p-4 align-top">
-                          <div className="text-[13px] font-medium text-[#111118] mb-2">{intent.display_summary}</div>
-                          {identifierLabel && (
-                            <div className="flex items-center relative">
-                              <span className="text-[11px] text-[#6b7280] absolute left-2">{identifierLabel}:</span>
-                              <input 
-                                type="text"
-                                value={identifierValue}
-                                onChange={e => updateIntent(idx, identifierField, e.target.value)}
-                                className={`w-full h-8 pl-16 pr-2 text-[13px] border rounded bg-white focus:outline-none focus:border-[#7c3aed] ${showWarning ? 'border-[#d97706] border-l-2' : 'border-[#e5e7eb]'}`}
-                              />
-                              {showWarning && (
-                                <AlertTriangle size={14} className="text-[#d97706] absolute right-2" />
-                              )}
-                            </div>
-                          )}
-                          
-                          {rowResult && (
-                            <div className="mt-2 flex items-center gap-1.5 text-[12px]">
-                              {rowResult.success ? (
-                                <>
-                                  <CheckCircle2 size={14} className="text-[#16a34a]" />
-                                  <span className="text-[#16a34a]">Created</span>
-                                  {rowResult.record_id && (
-                                    <Link 
-                                      href={`/${intent.intent === 'CREATE_INVOICE' ? 'invoices' : intent.intent === 'CREATE_BILL' ? 'bills' : intent.intent === 'CREATE_EXPENSE' ? 'expenses' : intent.intent === 'CREATE_CONTACT' ? 'contacts' : 'items'}/${rowResult.record_id}`} 
-                                      className="text-[#7c3aed] hover:underline ml-1"
-                                    >
-                                      View →
-                                    </Link>
-                                  )}
-                                  {rowResult.navigate_to && (
-                                    <Link href={rowResult.navigate_to} className="text-[#7c3aed] hover:underline ml-1">
-                                      Open Report →
-                                    </Link>
-                                  )}
-                                </>
-                              ) : (
-                                <>
-                                  <X size={14} className="text-[#dc2626]" />
-                                  <span className="text-[#dc2626]">{rowResult.error}</span>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-4 align-top">
-                          {!['RUN_REPORT', 'ANSWER_QUESTION'].includes(intent.intent) ? (
-                            <div className="relative">
-                              <span className="absolute left-2 top-1.5 text-[13px] text-[#6b7280]">$</span>
-                              <input 
-                                type="number" 
-                                value={(amountValue / 100).toFixed(2)}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  const cents = Math.round(parseFloat(val || '0') * 100);
-                                  if (intent.intent === 'CREATE_INVOICE' || intent.intent === 'CREATE_BILL') {
-                                    updateLineItemRate(idx, cents);
-                                  } else if (intent.intent === 'CREATE_EXPENSE') {
-                                    updateIntent(idx, 'amount', cents);
-                                  } else if (intent.intent === 'CREATE_ITEM') {
-                                    updateIntent(idx, 'default_rate', cents);
-                                  }
-                                }}
-                                className="w-full h-8 pl-6 pr-2 text-[13px] font-mono border border-[#e5e7eb] rounded bg-white focus:outline-none focus:border-[#7c3aed]"
-                                step="0.01"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-[#9ca3af]">—</span>
-                          )}
-                        </td>
-                        <td className="p-4 align-top">
-                          {status === 'Ready' ? (
-                            <div className="inline-flex items-center gap-1 bg-[#f0fdf4] text-[#16a34a] px-2 py-1 rounded text-[11px] font-medium">
-                              <CheckCircle2 size={12} /> Ready
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-1 bg-[#fffbeb] text-[#d97706] px-2 py-1 rounded text-[11px] font-medium">
-                              <AlertTriangle size={12} /> Review
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-4 align-top text-center">
-                          <button onClick={() => removeIntent(idx)} className="text-[#9ca3af] hover:text-[#dc2626]">
-                            <X size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+            ))}
           </div>
-
-          <div className="border-t border-[#e5e7eb] p-4 shrink-0 bg-white flex justify-between items-center">
-            <div className="text-[13px] text-[#6b7280]">
-              {pendingIntents.length > 0 ? `${pendingIntents.length} transaction(s) ready` : 'No transactions'}
-            </div>
-            <div className="flex gap-2">
-              {executeResults ? (
-                <button 
-                  onClick={() => {
-                    setPendingIntents([]);
-                    setExecuteResults(null);
-                  }}
-                  className="bg-white border border-[#e5e7eb] rounded-lg text-[#374151] px-4 py-1.5 text-sm font-medium hover:bg-gray-50"
-                >
-                  Done
-                </button>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => setPendingIntents([])}
-                    disabled={pendingIntents.length === 0}
-                    className="bg-white border border-[#e5e7eb] rounded-lg text-[#374151] px-4 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Clear
-                  </button>
-                  <button 
-                    onClick={executeAll}
-                    disabled={!allReady || pendingIntents.length === 0 || isLoading}
-                    className="bg-[#7c3aed] text-white rounded-full px-5 py-1.5 text-sm font-medium hover:bg-[#6d28d9] disabled:opacity-50 disabled:hover:bg-[#7c3aed]"
-                  >
-                    Execute All →
-                  </button>
-                </>
-              )}
-            </div>
+          <div className="p-4 flex justify-end border-t border-[#e5e7eb]">
+            <button
+              onClick={resetSession}
+              className="bg-[#7c3aed] text-white rounded-xl px-5 py-2 text-sm font-semibold hover:bg-[#6d28d9]"
+            >
+              Record more
+            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
-  );
+  )
 }

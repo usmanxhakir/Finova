@@ -15,6 +15,7 @@ interface DisplayMessage {
 
 export default function AgentPage() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [pendingIntents, setPendingIntents] = useState<ResolvedIntent[]>([]);
@@ -27,35 +28,39 @@ export default function AgentPage() {
 
   useEffect(() => {
     async function loadLastConversation() {
-      // eslint-disable-next-line
-      const { data: lastConversation } = await (supabase as any)
-        .from('agent_conversations')
-        .select('id')
-        .order('last_message_at', { ascending: false })
-        .limit(1)
-        .maybeSingle() as { data: { id: string } | null, error: unknown };
-
-      if (lastConversation) {
-        setConversationId(lastConversation.id);
+      try {
         // eslint-disable-next-line
-        const { data: msgs } = await (supabase as any)
-          .from('agent_messages')
-          .select('id, role, content, created_at')
-          .eq('conversation_id', lastConversation.id)
-          .order('created_at', { ascending: true }) as unknown as {
-            data: Array<{
-              id: string
-              role: string
-              content: string
-              created_at: string
-            }> | null
-            error: unknown
-          };
-        
-        if (msgs && msgs.length > 0) {
-          setMessages(msgs.map(m => ({ id: m.id, role: m.role as 'user'|'assistant', content: m.content })));
-          setConversationHistory(msgs.map(m => ({ role: m.role, content: m.content })));
+        const { data: lastConversation } = await (supabase as any)
+          .from('agent_conversations')
+          .select('id')
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+          .maybeSingle() as { data: { id: string } | null, error: unknown };
+
+        if (lastConversation) {
+          setConversationId(lastConversation.id);
+          // eslint-disable-next-line
+          const { data: msgs } = await (supabase as any)
+            .from('agent_messages')
+            .select('id, role, content, created_at')
+            .eq('conversation_id', lastConversation.id)
+            .order('created_at', { ascending: true }) as unknown as {
+              data: Array<{
+                id: string
+                role: string
+                content: string
+                created_at: string
+              }> | null
+              error: unknown
+            };
+
+          if (msgs && msgs.length > 0) {
+            setMessages(msgs.map(m => ({ id: m.id, role: m.role as 'user'|'assistant', content: m.content })));
+            setConversationHistory(msgs.map(m => ({ role: m.role, content: m.content })));
+          }
         }
+      } finally {
+        setIsInitializing(false);
       }
     }
     loadLastConversation();
@@ -250,7 +255,7 @@ export default function AgentPage() {
         return 'Ready';
       case 'CREATE_BILL':
         if (!intent.data.vendor_name && !intent.resolved.contact_id) return 'Review';
-        if (!intent.data.line_items?.length) return 'Review';
+        if (!intent.data.line_items?.length || intent.data.line_items[0].rate <= 0) return 'Review';
         return 'Ready';
       case 'CREATE_EXPENSE':
         if (!intent.data.payee) return 'Review';
@@ -304,7 +309,15 @@ export default function AgentPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
-            {messages.length === 0 ? (
+            {isInitializing && messages.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="flex gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#9ca3af] animate-pulse" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            ) : !isInitializing && messages.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center text-[#6b7280]">
                 <Sparkles size={32} className="text-[#7c3aed] opacity-60 mb-4" />
                 <h3 className="text-[#111118] font-medium mb-1">Ask me anything</h3>

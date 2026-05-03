@@ -6,6 +6,42 @@ import type {
 } from '@/types/agent'
 import type { AgentContext } from './context-loader'
 
+// Returns true only when the value has a decimal component (definitely dollars, not cents).
+// Whole numbers are left as-is to avoid double-multiplying if the model correctly
+// returned cents (e.g. 34000 for $340). The system prompt is the primary fix.
+function isLikelyDollars(value: unknown): boolean {
+  if (typeof value !== 'number') return false
+  if (value === 0) return false
+  // If the value has a fractional part it must be dollars (cents are always integers)
+  return value % 1 !== 0
+}
+
+function normalizeToCents(data: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...data }
+
+  // Normalize line_items rates and amounts
+  if (Array.isArray(result.line_items)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    result.line_items = (result.line_items as any[]).map((item: Record<string, unknown>) => ({
+      ...item,
+      rate: isLikelyDollars(item.rate) ? Math.round((item.rate as number) * 100) : (item.rate ?? 0),
+      amount: isLikelyDollars(item.amount) ? Math.round((item.amount as number) * 100) : (item.amount ?? 0),
+    }))
+  }
+
+  // Normalize top-level amount (for expenses)
+  if (result.amount !== undefined) {
+    result.amount = isLikelyDollars(result.amount) ? Math.round((result.amount as number) * 100) : result.amount
+  }
+
+  // Normalize default_rate (for items)
+  if (result.default_rate !== undefined) {
+    result.default_rate = isLikelyDollars(result.default_rate) ? Math.round((result.default_rate as number) * 100) : result.default_rate
+  }
+
+  return result
+}
+
 function fuzzyFind<T extends { id: string; name: string }>(
   list: T[],
   query: string | undefined
@@ -79,5 +115,6 @@ export function resolveIntent(
     }
   }
 
-  return { ...intent, resolved }
+  const normalizedData = normalizeToCents(intent.data as Record<string, unknown>)
+  return { ...intent, data: normalizedData as ParsedIntent['data'], resolved }
 }

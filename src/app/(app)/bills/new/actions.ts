@@ -5,15 +5,24 @@ import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveBill(values: any, isFinalize: boolean, settings: any): Promise<{ success: false, errorCode: string, message?: string } | void> {
+export async function handleSaveBill(values: any, isFinalize: boolean): Promise<{ success: false, errorCode: string, message?: string } | void> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
 
-    // 1. Insert Bill
+    // 1. Generate Bill Number
+    const { data: billNumber, error: numError } = await (supabase as any)
+        .rpc('generate_bill_number')
+
+    if (numError || !billNumber) {
+        console.error('[create-bill] number generation error:', numError)
+        throw new Error('Failed to generate bill number: ' + numError?.message)
+    }
+
+    // 2. Insert Bill
     const { data: billData, error: billError } = await (supabase.from('bills') as any)
         .insert({
             company_id: companyId,
-            number: values.number,
+            number: billNumber,
             contact_id: values.contact_id,
             reference_number: values.reference_number,
             issue_date: values.issue_date,
@@ -40,7 +49,7 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
         return { success: false, errorCode: 'UNKNOWN', message: billError?.message || 'Failed to create bill' }
     }
 
-    // 2. Insert Line Items
+    // 3. Insert Line Items
     const lineItems = values.line_items.map((item: any) => ({
         company_id: companyId,
         bill_id: bill.id,
@@ -60,13 +69,6 @@ export async function handleSaveBill(values: any, isFinalize: boolean, settings:
         // Cleanup bill on error
         await (supabase.from('bills') as any).delete().eq('id', bill.id)
         throw new Error(`Failed to create line items: ${linesError.message}`)
-    }
-
-    // 3. Update next number in settings (now in companies table)
-    if (settings?.id) {
-        await (supabase.from('companies') as any)
-            .update({ bill_next_number: (settings.bill_next_number || 1) + 1 })
-            .eq('id', settings.id)
     }
 
     // 4. Create Journal Entry if Finalized

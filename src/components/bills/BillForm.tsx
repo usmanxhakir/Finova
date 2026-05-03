@@ -58,7 +58,7 @@ const lineItemSchema = z.object({
 })
 
 const billSchema = z.object({
-    number: z.string().min(1, 'Bill number is required'),
+    number: z.string().optional(),
     contact_id: z.string().min(1, 'Vendor is required'),
     reference_number: z.string().optional().nullable(),
     issue_date: z.string().min(1, 'Issue date is required'),
@@ -240,19 +240,20 @@ export function BillForm({
                                 </FormItem>
                             )}
                         />
-                        <FormField
-                            control={form.control as any}
-                            name="number"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Bill #</FormLabel>
-                                    <FormControl>
-                                        <Input {...field} value={field.value || ''} disabled={isLocked} />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                        <FormItem className="flex flex-col justify-end pb-1">
+                            <FormLabel className="mb-2">Bill #</FormLabel>
+                            <div className="h-10 flex items-center">
+                                {form.getValues('number') ? (
+                                    <span className="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md font-mono font-medium border border-zinc-200 dark:border-zinc-700">
+                                        {form.getValues('number')}
+                                    </span>
+                                ) : (
+                                    <span className="text-sm text-muted-foreground italic">
+                                        Auto-assigned on save
+                                    </span>
+                                )}
+                            </div>
+                        </FormItem>
                         <FormField
                             control={form.control as any}
                             name="reference_number"

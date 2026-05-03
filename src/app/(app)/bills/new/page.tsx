@@ -15,7 +15,7 @@ export default function NewBillPage() {
     const [vendors, setVendors] = useState<any[]>([])
     const [items, setItems] = useState<any[]>([])
     const [accounts, setAccounts] = useState<any[]>([])
-    const [settings, setSettings] = useState<any>(null)
+    const [nextNumber, setNextNumber] = useState<string>('')
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -25,18 +25,18 @@ export default function NewBillPage() {
                     { data: vendData },
                     { data: itemData },
                     { data: accData },
-                    { data: settData }
+                    { data: billNum }
                 ] = await Promise.all([
                     supabase.from('contacts').select('id, name').in('type', ['vendor', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
-                    supabase.from('companies').select('*').single()
+                    supabase.rpc('generate_bill_number')
                 ])
 
                 setVendors(vendData || [])
                 setItems(itemData || [])
                 setAccounts(accData || [])
-                setSettings(settData)
+                setNextNumber(billNum || '')
             } catch (error) {
                 console.error('Error loading new bill data:', error)
             } finally {
@@ -48,11 +48,8 @@ export default function NewBillPage() {
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>
 
-    const prefix = settings?.bill_prefix || 'BILL-'
-    const nextNumber = `${prefix}${String(settings?.bill_next_number || 1).padStart(4, '0')}`
-
     const onSave = async (values: any, isFinalize: boolean) => {
-        const result = await handleSaveBill(values, isFinalize, settings)
+        const result = await handleSaveBill(values, isFinalize)
         // handleSaveBill returns a result object on error, or void (then redirects) on success
         if (result && result.success === false) {
             throw new Error(result.errorCode)

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
               payee: intent.data.payee ?? 'Unknown',
               description: intent.data.description ?? '',
               amount: intent.data.amount,            // already cents
-              account_id: intent.resolved.account_id,
+              expense_account_id: intent.resolved.account_id,
               payment_account_id: intent.resolved.payment_account_id,
             }),
           })
@@ -51,6 +51,21 @@ export async function POST(request: Request) {
           const dueDate = new Date(
             Date.now() + (intent.data.due_days ?? 30) * 86400000
           ).toISOString().split('T')[0]
+          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => ({
+            description: li.description ?? '',
+            quantity: li.quantity ?? 1,
+            rate: li.rate ?? 0,
+            account_id: li.account_id ?? null,
+          }))
+
+          if (lineItems.length === 0) {
+            return {
+              intent: intent.intent,
+              success: false,
+              error: 'No line items found. Please specify what was purchased and the amount.',
+            }
+          }
+
           const res = await fetch(`${baseUrl}/api/invoices`, {
             method: 'POST',
             headers: {
@@ -62,7 +77,7 @@ export async function POST(request: Request) {
               customer_reference: intent.data.customer_reference,
               issue_date: today,
               due_date: dueDate,
-              line_items: intent.resolved.line_items, // rates already in cents
+              line_items: lineItems, // rates already in cents
               notes: intent.data.notes,
               status: 'draft',
             }),
@@ -80,6 +95,21 @@ export async function POST(request: Request) {
           const dueDate = new Date(
             Date.now() + (intent.data.due_days ?? 30) * 86400000
           ).toISOString().split('T')[0]
+          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => ({
+            description: li.description ?? '',
+            quantity: li.quantity ?? 1,
+            rate: li.rate ?? 0,
+            account_id: li.account_id ?? null,
+          }))
+
+          if (lineItems.length === 0) {
+            return {
+              intent: intent.intent,
+              success: false,
+              error: 'No line items found. Please specify what was purchased and the amount.',
+            }
+          }
+
           const res = await fetch(`${baseUrl}/api/bills`, {
             method: 'POST',
             headers: {
@@ -91,7 +121,7 @@ export async function POST(request: Request) {
               vendor_reference: intent.data.vendor_reference,
               issue_date: today,
               due_date: dueDate,
-              line_items: intent.resolved.line_items, // rates already in cents
+              line_items: lineItems, // rates already in cents
               notes: intent.data.notes,
               status: 'draft',
             }),

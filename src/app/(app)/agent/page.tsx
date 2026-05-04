@@ -341,6 +341,13 @@ export default function AgentPage() {
         account_id: e.account_id || null,
         expense_account_id: e.account_id || null,
         payment_account_id: e.payment_account_id || null,
+        line_items: e.type !== 'EXPENSE' ? [{ 
+          description: e.description, 
+          quantity: 1, 
+          rate: e.amount, 
+          amount: e.amount, 
+          account_id: e.account_id || null 
+        }] : undefined,
       },
     }))
 

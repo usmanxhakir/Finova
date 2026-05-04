@@ -339,6 +339,7 @@ export default function AgentPage() {
       resolved: {
         contact_id: e.contact_id || null,
         account_id: e.account_id || null,
+        expense_account_id: e.account_id || null,
         payment_account_id: e.payment_account_id || null,
       },
     }))

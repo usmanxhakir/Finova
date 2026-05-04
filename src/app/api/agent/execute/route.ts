@@ -23,6 +23,19 @@ export async function POST(request: Request) {
 
       switch (intent.intent) {
         case 'CREATE_EXPENSE': {
+          const expenseAccountId = intent.resolved.expense_account_id 
+            ?? intent.resolved.account_id 
+            ?? (intent.data as Record<string, unknown>)?.account_id 
+            ?? null
+
+          if (!expenseAccountId) {
+            return {
+              intent: intent.intent,
+              success: false,
+              error: 'No expense account selected. Please pick an account in the review table.',
+            }
+          }
+
           const res = await fetch(`${baseUrl}/api/expenses`, {
             method: 'POST',
             headers: {
@@ -34,7 +47,7 @@ export async function POST(request: Request) {
               payee: intent.data.payee ?? 'Unknown',
               description: intent.data.description ?? '',
               amount: intent.data.amount,            // already cents
-              expense_account_id: intent.resolved.account_id,
+              expense_account_id: expenseAccountId,
               payment_account_id: intent.resolved.payment_account_id,
             }),
           })

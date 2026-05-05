@@ -100,7 +100,7 @@ export default function ProfitLossPage() {
                         .gte('date', format(start, 'yyyy-MM-dd'))
                         .lte('date', format(end, 'yyyy-MM-dd'))
 
-                    const ids = entries?.map(je => je.id) ?? []
+                    const ids = (entries ?? []).map((je: any) => je.id)
                     if (ids.length === 0) continue
 
                     const { data: lines } = await supabase

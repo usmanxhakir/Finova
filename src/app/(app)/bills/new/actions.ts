@@ -3,12 +3,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
-import { getRedirectError } from 'next/dist/client/components/redirect'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleSaveBill(values: any, isFinalize: boolean): Promise<{ success: false, errorCode: string, message?: string } | void> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
+    let redirectPath: string | null = null
 
     try {
         // 1. Generate Bill Number
@@ -77,16 +77,16 @@ export async function handleSaveBill(values: any, isFinalize: boolean): Promise<
             try {
                 await createBillJournalEntry(supabase, bill.id, companyId)
             } catch (err: any) {
-                if (getRedirectError(err)) throw err
                 console.error('Journal entry creation failed:', err)
                 // We keep the bill but report the error
             }
         }
-    } catch (error) {
-        if (getRedirectError(error)) throw error
-        console.error('[create-bill] error:', error)
-        return { success: false, errorCode: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) }
+
+        redirectPath = '/bills'
+    } catch (err: any) {
+        console.error('Bill creation failed:', err)
+        return { success: false, errorCode: 'SERVER_ERROR' }
     }
 
-    redirect('/bills')
+    if (redirectPath) redirect(redirectPath)
 }

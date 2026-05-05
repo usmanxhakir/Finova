@@ -3,7 +3,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
-import { getRedirectError } from 'next/dist/client/components/redirect'
 import { createInvoiceJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
@@ -85,13 +84,11 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
             try {
                 await createInvoiceJournalEntry(supabase, invoice.id, companyId)
             } catch (err: any) {
-                if (getRedirectError(err)) throw err
                 console.error('[create-invoice] journal entry creation failed:', err)
                 // We keep the invoice but log the error
             }
         }
     } catch (error) {
-        if (getRedirectError(error)) throw error
         console.error('[create-invoice] error:', error)
         return { success: false, errorCode: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) }
     }

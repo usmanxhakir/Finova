@@ -87,12 +87,7 @@ export async function POST(request: Request) {
 
     // 5. Journal Entry if status is not 'draft'
     if (status !== 'draft') {
-      try {
-        await createInvoiceJournalEntry(supabase, invoice.id, companyId)
-      } catch (err: any) {
-        console.error('[API Invoices] journal entry failed:', err)
-        // We return success for the invoice but log the journal failure
-      }
+      await createInvoiceJournalEntry(supabase, invoice.id, companyId)
     }
 
     return Response.json({ id: invoice.id })

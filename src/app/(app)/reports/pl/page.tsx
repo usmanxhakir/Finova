@@ -90,10 +90,10 @@ export default function ProfitLossPage() {
                     const start = startOfMonth(month)
                     const end = endOfMonth(month)
                     return supabase
-                        .from('journal_entry_lines')
-                        .select('account_id, debit, credit, journal_entries!inner(date)')
-                        .gte('journal_entries.date', format(start, 'yyyy-MM-dd'))
-                        .lte('journal_entries.date', format(end, 'yyyy-MM-dd'))
+                        .from('journal_entries')
+                        .select('id, journal_entry_lines(account_id, debit, credit)')
+                        .gte('date', format(start, 'yyyy-MM-dd'))
+                        .lte('date', format(end, 'yyyy-MM-dd'))
                 })
 
                 const monthlyResults = await Promise.all(monthlyQueries)
@@ -104,11 +104,13 @@ export default function ProfitLossPage() {
                 })
 
                 monthlyResults.forEach((res, monthIndex) => {
-                    res.data?.forEach((line: any) => {
-                        if (map[line.account_id]) {
-                            const val = Number(line.credit) - Number(line.debit)
-                            map[line.account_id].monthlyValues[monthIndex] += val
-                        }
+                    res.data?.forEach((je: any) => {
+                        je.journal_entry_lines?.forEach((line: any) => {
+                            if (map[line.account_id]) {
+                                const val = Number(line.credit) - Number(line.debit)
+                                map[line.account_id].monthlyValues[monthIndex] += val
+                            }
+                        })
                     })
                 })
             } else {
@@ -119,31 +121,35 @@ export default function ProfitLossPage() {
 
                 const [currentLines, priorLines] = await Promise.all([
                     supabase
-                        .from('journal_entry_lines')
-                        .select('account_id, debit, credit, journal_entries!inner(date)')
-                        .gte('journal_entries.date', format(startDate, 'yyyy-MM-dd'))
-                        .lte('journal_entries.date', format(endDate, 'yyyy-MM-dd')),
+                        .from('journal_entries')
+                        .select('id, journal_entry_lines(account_id, debit, credit)')
+                        .gte('date', format(startDate, 'yyyy-MM-dd'))
+                        .lte('date', format(endDate, 'yyyy-MM-dd')),
                     supabase
-                        .from('journal_entry_lines')
-                        .select('account_id, debit, credit, journal_entries!inner(date)')
-                        .gte('journal_entries.date', format(priorStartDate, 'yyyy-MM-dd'))
-                        .lte('journal_entries.date', format(priorEndDate, 'yyyy-MM-dd'))
+                        .from('journal_entries')
+                        .select('id, journal_entry_lines(account_id, debit, credit)')
+                        .gte('date', format(priorStartDate, 'yyyy-MM-dd'))
+                        .lte('date', format(priorEndDate, 'yyyy-MM-dd'))
                 ])
 
-                currentLines.data?.forEach((line: any) => {
-                    if (map[line.account_id]) {
-                        const acc = map[line.account_id]
-                        const val = Number(line.credit) - Number(line.debit)
-                        acc.currentPeriod += val
-                    }
+                currentLines.data?.forEach((je: any) => {
+                    je.journal_entry_lines?.forEach((line: any) => {
+                        if (map[line.account_id]) {
+                            const acc = map[line.account_id]
+                            const val = Number(line.credit) - Number(line.debit)
+                            acc.currentPeriod += val
+                        }
+                    })
                 })
 
-                priorLines.data?.forEach((line: any) => {
-                    if (map[line.account_id]) {
-                        const acc = map[line.account_id]
-                        const val = Number(line.credit) - Number(line.debit)
-                        acc.priorPeriod += val
-                    }
+                priorLines.data?.forEach((je: any) => {
+                    je.journal_entry_lines?.forEach((line: any) => {
+                        if (map[line.account_id]) {
+                            const acc = map[line.account_id]
+                            const val = Number(line.credit) - Number(line.debit)
+                            acc.priorPeriod += val
+                        }
+                    })
                 })
             }
 

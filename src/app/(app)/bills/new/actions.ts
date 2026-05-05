@@ -3,82 +3,89 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { redirect } from 'next/navigation'
+import { isRedirectError } from 'next/dist/client/components/redirect'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
 export async function handleSaveBill(values: any, isFinalize: boolean): Promise<{ success: false, errorCode: string, message?: string } | void> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
 
-    // 1. Generate Bill Number
-    const { data: billNumber, error: numError } = await (supabase as any)
-        .rpc('generate_bill_number')
+    try {
+        // 1. Generate Bill Number
+        const { data: billNumber, error: numError } = await (supabase as any)
+            .rpc('generate_bill_number')
 
-    if (numError || !billNumber) {
-        console.error('[create-bill] number generation error:', numError)
-        throw new Error('Failed to generate bill number: ' + numError?.message)
-    }
+        if (numError || !billNumber) {
+            console.error('[create-bill] number generation error:', numError)
+            throw new Error('Failed to generate bill number: ' + numError?.message)
+        }
 
-    // 2. Insert Bill
-    const { data: billData, error: billError } = await (supabase.from('bills') as any)
-        .insert({
+        // 2. Insert Bill
+        const { data: billData, error: billError } = await (supabase.from('bills') as any)
+            .insert({
+                company_id: companyId,
+                number: billNumber,
+                contact_id: values.contact_id,
+                reference_number: values.reference_number,
+                issue_date: values.issue_date,
+                due_date: values.due_date,
+                notes: values.notes,
+                status: isFinalize ? 'received' : 'draft',
+                subtotal: Math.round(Number(values.subtotal) * 100),
+                tax_amount: Math.round(Number(values.tax_amount) * 100),
+                discount_amount: Math.round(Number(values.discount_amount) * 100),
+                total: Math.round(Number(values.total) * 100),
+                amount_due: Math.round(Number(values.total) * 100),
+                amount_paid: 0
+            })
+            .select()
+            .single()
+
+        if (billError || !billData) {
+            if (billError?.code === '23505') {
+                return { success: false, errorCode: 'DUPLICATE_NUMBER' }
+            }
+            throw new Error(billError?.message || 'Failed to create bill')
+        }
+
+        const bill = billData as any
+
+        // 3. Insert Line Items
+        const lineItems = values.line_items.map((item: any) => ({
             company_id: companyId,
-            number: billNumber,
-            contact_id: values.contact_id,
-            reference_number: values.reference_number,
-            issue_date: values.issue_date,
-            due_date: values.due_date,
-            notes: values.notes,
-            status: isFinalize ? 'received' : 'draft',
-            subtotal: Math.round(Number(values.subtotal) * 100),
-            tax_amount: Math.round(Number(values.tax_amount) * 100),
-            discount_amount: Math.round(Number(values.discount_amount) * 100),
-            total: Math.round(Number(values.total) * 100),
-            amount_due: Math.round(Number(values.total) * 100),
-            amount_paid: 0
-        })
-        .select()
-        .single()
+            bill_id: bill.id,
+            item_id: item.item_id || null,
+            description: item.description,
+            quantity: Number(item.quantity),
+            rate: Math.round(Number(item.rate) * 100),
+            amount: Math.round(Number(item.amount) * 100),
+            account_id: item.account_id,
+            tax_rate: Number(item.tax_rate)
+        }))
 
-    const bill = billData as any
+        const { error: linesError } = await (supabase.from('bill_line_items') as any)
+            .insert(lineItems)
 
-    if (billError || !bill) {
-        // Postgres unique-constraint violation code is '23505'
-        if (billError?.code === '23505') {
-            return { success: false, errorCode: 'DUPLICATE_NUMBER' }
+        if (linesError) {
+            // Cleanup bill on error
+            await (supabase.from('bills') as any).delete().eq('id', bill.id)
+            throw new Error(`Failed to create line items: ${linesError.message}`)
         }
-        return { success: false, errorCode: 'UNKNOWN', message: billError?.message || 'Failed to create bill' }
-    }
 
-    // 3. Insert Line Items
-    const lineItems = values.line_items.map((item: any) => ({
-        company_id: companyId,
-        bill_id: bill.id,
-        item_id: item.item_id || null,
-        description: item.description,
-        quantity: Number(item.quantity),
-        rate: Math.round(Number(item.rate) * 100),
-        amount: Math.round(Number(item.amount) * 100),
-        account_id: item.account_id,
-        tax_rate: Number(item.tax_rate)
-    }))
-
-    const { error: linesError } = await (supabase.from('bill_line_items') as any)
-        .insert(lineItems)
-
-    if (linesError) {
-        // Cleanup bill on error
-        await (supabase.from('bills') as any).delete().eq('id', bill.id)
-        throw new Error(`Failed to create line items: ${linesError.message}`)
-    }
-
-    // 4. Create Journal Entry if Finalized
-    if (isFinalize) {
-        try {
-            await createBillJournalEntry(supabase, bill.id, companyId)
-        } catch (err: any) {
-            console.error('Journal entry creation failed:', err)
-            // We keep the bill but report the error
+        // 4. Create Journal Entry if Finalized
+        if (isFinalize) {
+            try {
+                await createBillJournalEntry(supabase, bill.id, companyId)
+            } catch (err: any) {
+                if (isRedirectError(err)) throw err
+                console.error('Journal entry creation failed:', err)
+                // We keep the bill but report the error
+            }
         }
+    } catch (error) {
+        if (isRedirectError(error)) throw error
+        console.error('[create-bill] error:', error)
+        return { success: false, errorCode: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) }
     }
 
     redirect('/bills')

@@ -1,4 +1,5 @@
 'use client'
+import { isRedirectError } from 'next/dist/client/components/redirect'
 
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'

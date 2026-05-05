@@ -16,7 +16,17 @@ export default function BackfillPage() {
     setLog(prev => [...prev, `Starting backfill for ${MISSING_IDS.length} invoices...`])
     for (const id of MISSING_IDS) {
       try {
-        await createInvoiceJournalEntry(id, supabase as any)
+        const { data: inv, error: fetchError } = await supabase
+          .from('invoices')
+          .select('company_id')
+          .eq('id', id)
+          .single()
+
+        if (fetchError || !inv) {
+          throw new Error(`Could not find invoice or company_id: ${fetchError?.message}`)
+        }
+
+        await createInvoiceJournalEntry(supabase as any, id, inv.company_id)
         setLog(prev => [...prev, `✅ Done: ${id}`])
       } catch (e: any) {
         console.error(e)

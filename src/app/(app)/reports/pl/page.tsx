@@ -61,7 +61,6 @@ export default function ProfitLossPage() {
     const loadData = async () => {
         setLoading(true)
         try {
-            // 1. Fetch all Revenue and Expense accounts
             const { data: accData } = await supabase
                 .from('accounts')
                 .select('*')
@@ -82,76 +81,54 @@ export default function ProfitLossPage() {
                 }
             })
 
+            const getLines = async (from: string, to: string) => {
+                const { data: entries } = await supabase
+                    .from('journal_entries')
+                    .select('id')
+                    .gte('date', from)
+                    .lte('date', to)
+                const ids = (entries as any[] ?? []).map((je: any) => je.id)
+                if (ids.length === 0) return []
+                const { data: lines } = await supabase
+                    .from('journal_entry_lines')
+                    .select('account_id, debit, credit')
+                    .in('journal_entry_id', ids)
+                return (lines as any[]) ?? []
+            }
+
             if (viewMode === 'monthly') {
                 const interval = eachMonthOfInterval({ start: startDate, end: endDate })
                 setMonths(interval)
-
                 Object.values(map).forEach(acc => {
                     acc.monthlyValues = Array(interval.length).fill(0)
                 })
-
-                for (let monthIndex = 0; monthIndex < interval.length; monthIndex++) {
-                    const start = startOfMonth(interval[monthIndex])
-                    const end = endOfMonth(interval[monthIndex])
-
-                    const { data: entries } = await supabase
-                        .from('journal_entries')
-                        .select('id')
-                        .gte('date', format(start, 'yyyy-MM-dd'))
-                        .lte('date', format(end, 'yyyy-MM-dd'))
-
-                    const ids = (entries ?? []).map((je: any) => je.id)
-                    if (ids.length === 0) continue
-
-                    const { data: lines } = await supabase
-                        .from('journal_entry_lines')
-                        .select('account_id, debit, credit')
-                        .in('journal_entry_id', ids)
-
-                    lines?.forEach((line: any) => {
+                for (let i = 0; i < interval.length; i++) {
+                    const lines = await getLines(
+                        format(startOfMonth(interval[i]), 'yyyy-MM-dd'),
+                        format(endOfMonth(interval[i]), 'yyyy-MM-dd')
+                    )
+                    lines.forEach((line: any) => {
                         if (map[line.account_id]) {
-                            map[line.account_id].monthlyValues[monthIndex] += Number(line.credit) - Number(line.debit)
+                            map[line.account_id].monthlyValues[i] += Number(line.credit) - Number(line.debit)
                         }
                     })
                 }
             } else {
-                // Single Period Logic (Original)
                 const daysDiff = differenceInDays(endDate, startDate) + 1
                 const priorEndDate = subDays(startDate, 1)
                 const priorStartDate = subDays(priorEndDate, daysDiff - 1)
 
-                const [currentEntries, priorEntries] = await Promise.all([
-                    supabase
-                        .from('journal_entries')
-                        .select('id')
-                        .gte('date', format(startDate, 'yyyy-MM-dd'))
-                        .lte('date', format(endDate, 'yyyy-MM-dd')),
-                    supabase
-                        .from('journal_entries')
-                        .select('id')
-                        .gte('date', format(priorStartDate, 'yyyy-MM-dd'))
-                        .lte('date', format(priorEndDate, 'yyyy-MM-dd'))
-                ])
-
-                const currentIds = currentEntries.data?.map(je => je.id) ?? []
-                const priorIds = priorEntries.data?.map(je => je.id) ?? []
-
                 const [currentLines, priorLines] = await Promise.all([
-                    currentIds.length > 0
-                        ? supabase.from('journal_entry_lines').select('account_id, debit, credit').in('journal_entry_id', currentIds)
-                        : Promise.resolve({ data: [] }),
-                    priorIds.length > 0
-                        ? supabase.from('journal_entry_lines').select('account_id, debit, credit').in('journal_entry_id', priorIds)
-                        : Promise.resolve({ data: [] }),
+                    getLines(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')),
+                    getLines(format(priorStartDate, 'yyyy-MM-dd'), format(priorEndDate, 'yyyy-MM-dd'))
                 ])
 
-                currentLines.data?.forEach((line: any) => {
+                currentLines.forEach((line: any) => {
                     if (map[line.account_id]) {
                         map[line.account_id].currentPeriod += Number(line.credit) - Number(line.debit)
                     }
                 })
-
-                priorLines.data?.forEach((line: any) => {
+                priorLines.forEach((line: any) => {
                     if (map[line.account_id]) {
                         map[line.account_id].priorPeriod += Number(line.credit) - Number(line.debit)
                     }

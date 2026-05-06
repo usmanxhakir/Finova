@@ -71,7 +71,8 @@ export default function NewJournalEntryPage() {
 
                 // 2. Fetch active accounts (filtering out 1100 and 2100)
                 const { data: { session } } = await supabase.auth.getSession()
-                const { data: profile } = await (supabase.from('profiles') as any).select('company_id').single()
+                const { data: profile } = await (supabase.from('profiles') as any)
+                    .select('company_id').limit(1).maybeSingle()
                 const companyId = profile?.company_id
 
                 const { data: accData, error: accError } = await (supabase

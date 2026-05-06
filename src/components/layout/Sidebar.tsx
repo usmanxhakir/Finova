@@ -136,6 +136,12 @@ export function Sidebar() {
                                 <span>New Expense</span>
                             </DropdownMenuItem>
                         </Link>
+                        <Link href="/journal-entries/new">
+                            <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                <ClipboardList className="mr-2 h-4 w-4 text-zinc-400" />
+                                <span>New Journal Entry</span>
+                            </DropdownMenuItem>
+                        </Link>
                         <div className="h-px bg-zinc-100 my-1 mx-1" />
                         <Link href="/pay-bills">
                             <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">

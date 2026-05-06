@@ -49,7 +49,9 @@ export async function createInvoiceJournalEntry(
         .from('accounts') as any)
         .select('id, code')
         .eq('code', '1100') // A/R
-        .single()
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
 
     if (accountsError || !accounts) {
         throw new Error(`System account 1100 (Accounts Receivable) not found: ${accountsError?.message}`)
@@ -109,6 +111,7 @@ export async function createInvoiceJournalEntry(
             .from('accounts') as any)
             .select('id')
             .ilike('name', '%Tax Payable%')
+            .eq('company_id', companyId)
             .limit(1)
             .maybeSingle()
 
@@ -274,7 +277,9 @@ export async function createPaymentJournalEntry(
         .from('accounts') as any)
         .select('id')
         .eq('code', '1100')
-        .single()
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
 
     if (!arAccount) {
         throw new Error('System account 1100 (Accounts Receivable) not found')
@@ -367,7 +372,9 @@ export async function createBillJournalEntry(
         .from('accounts') as any)
         .select('id, code')
         .eq('code', '2100') // A/P
-        .single()
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
 
     if (accountsError || !accounts) {
         throw new Error(`System account 2100 (Accounts Payable) not found: ${accountsError?.message}`)
@@ -417,6 +424,7 @@ export async function createBillJournalEntry(
             .from('accounts') as any)
             .select('id')
             .ilike('name', '%Tax Payable%')
+            .eq('company_id', companyId)
             .limit(1)
             .maybeSingle()
 
@@ -592,7 +600,9 @@ export async function createBillPaymentJournalEntry(
         .from('accounts') as any)
         .select('id')
         .eq('code', '2100')
-        .single()
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
 
     if (!apAccount) {
         throw new Error('System account 2100 (Accounts Payable) not found')

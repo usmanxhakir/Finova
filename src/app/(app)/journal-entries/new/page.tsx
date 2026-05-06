@@ -70,21 +70,10 @@ export default function NewJournalEntryPage() {
                 }
 
                 // 2. Fetch active accounts (filtering out 1100 and 2100)
-                const { data: { session } } = await supabase.auth.getSession()
-                const { data: profile } = await (supabase.from('profiles') as any)
-                    .select('company_id').limit(1).maybeSingle()
-                const companyId = profile?.company_id
-
-                const { data: accData, error: accError } = await (supabase
-                    .from('accounts') as any)
-                    .select('id, code, name')
-                    .eq('is_active', true)
-                    .eq('company_id', companyId)
-                    .order('code')
-                
-                if (accData) {
-                    const filteredAccounts = (accData as any[]).filter(a => a.code !== '1100' && a.code !== '2100')
-                    setAccounts(filteredAccounts)
+                const accRes = await fetch('/api/accounts/list')
+                const accData = await accRes.json()
+                if (accData.accounts) {
+                    setAccounts(accData.accounts)
                 }
             } catch (err) {
                 console.error('Failed to load initial data', err)

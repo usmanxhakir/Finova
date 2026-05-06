@@ -60,11 +60,21 @@ export default function BalanceSheetPage() {
                 .select('*')
                 .eq('is_active', true)
 
-            // 2. Fetch all journal entry lines up to date
-            const { data: lines } = await (supabase
-                .from('journal_entry_lines')
-                .select('account_id, debit, credit, journal_entries!inner(date)')
-                .lte('journal_entries.date', format(asOfDate, 'yyyy-MM-dd')) as any)
+            // Step 1: get all journal entry IDs up to asOfDate
+            const { data: entries } = await supabase
+                .from('journal_entries')
+                .select('id')
+                .lte('date', format(asOfDate, 'yyyy-MM-dd'))
+
+            const ids = (entries as any[] ?? []).map((je: any) => je.id)
+
+            // Step 2: get all lines for those entries
+            const { data: lines } = ids.length > 0
+                ? await supabase
+                    .from('journal_entry_lines')
+                    .select('account_id, debit, credit')
+                    .in('journal_entry_id', ids)
+                : { data: [] }
 
             // 3. Aggregate
             const map: Record<string, BSAccount> = {}

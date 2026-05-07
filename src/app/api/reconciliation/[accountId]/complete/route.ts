@@ -16,8 +16,8 @@ export async function PATCH(
         const { data: recon, error: reconError } = await (supabase
             .from('reconciliations') as any)
             .select('*')
-            .eq('id', reconciliation_id)
-            .single();
+            .limit(1)
+            .maybeSingle();
 
         if (reconError || !recon) throw new Error('Reconciliation record not found');
 
@@ -35,7 +35,7 @@ export async function PATCH(
         }
 
         // 3. Fetch account type for balance calculation
-        const { data: account } = await (supabase.from('accounts') as any).select('type').eq('id', accountId).single();
+        const { data: account } = await (supabase.from('accounts') as any).select('type').eq('id', accountId).limit(1).maybeSingle();
         const isAsset = account?.type === 'asset';
 
         // 4. Calculate cleared balance accurately
@@ -52,11 +52,22 @@ export async function PATCH(
         }
 
         // 6. Calculate total book balance as of the statement date
+        // Step 6a: get journal_entry_ids filtered by date
+        const { data: jeIds, error: jeError } = await (supabase
+            .from('journal_entries') as any)
+            .select('id')
+            .lte('date', recon.statement_date);
+
+        if (jeError) throw jeError;
+
+        const ids = (jeIds || []).map((j: any) => j.id);
+
+        // Step 6b: fetch lines for this account within those entries
         const { data: allLinesAtDate, error: totalError } = await (supabase
             .from('journal_entry_lines') as any)
-            .select('debit, credit, journal_entries!inner(date)')
+            .select('debit, credit')
             .eq('account_id', accountId)
-            .lte('journal_entries.date', recon.statement_date);
+            .in('journal_entry_id', ids);
         
         if (totalError) throw totalError;
 

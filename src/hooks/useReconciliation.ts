@@ -61,7 +61,7 @@ export function useReconciliationLines(accountId: string) {
 export function useStartReconciliation() {
     const [isLoading, setIsLoading] = useState(false)
 
-    const start = async (accountId: string, data: { statement_date: string, statement_ending_balance: number }) => {
+    const start = useCallback(async (accountId: string, data: { statement_date: string, statement_ending_balance: number }) => {
         setIsLoading(true)
         try {
             const res = await fetch(`/api/reconciliation/${accountId}/start`, {
@@ -78,7 +78,7 @@ export function useStartReconciliation() {
         } finally {
             setIsLoading(false)
         }
-    }
+    }, [])
 
     return { start, isLoading }
 }

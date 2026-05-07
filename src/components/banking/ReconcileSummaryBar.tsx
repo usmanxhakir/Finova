@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,15 @@ export function ReconcileSummaryBar({
 }: ReconcileSummaryBarProps) {
     const isBalanced = difference === 0
 
+    const [inputValue, setInputValue] = useState(
+        (statementEndingBalance / 100).toFixed(2)
+    )
+
+    // Update inputValue when prop changes externally (on init)
+    useEffect(() => {
+        setInputValue((statementEndingBalance / 100).toFixed(2))
+    }, []) // only on mount
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <Card className="border-zinc-200/60 shadow-sm overflow-hidden">
@@ -39,12 +48,12 @@ export function ReconcileSummaryBar({
                         <Input 
                             type="number"
                             step="0.01"
-                            value={(statementEndingBalance / 100).toFixed(2)}
-                            onChange={(e) => {
-                                // Real-time calculation if needed, but the prompt says blur-save.
-                                // We'll keep it in local state for now and parent handles the update.
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onBlur={(e) => {
                                 const val = parseFloat(e.target.value) || 0
                                 onStatementBalanceChange(Math.round(val * 100))
+                                setInputValue(val.toFixed(2))
                             }}
                             className="pl-7 bg-white font-medium text-zinc-900 border-zinc-200"
                         />

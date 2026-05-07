@@ -7,7 +7,7 @@ export async function PATCH(
 ) {
     const { accountId } = await params;
     const body = await request.json();
-    const { reconciliation_id, cleared_line_ids } = body;
+    const { reconciliation_id, cleared_line_ids, statement_ending_balance } = body;
 
     const supabase = await createClient();
 
@@ -46,7 +46,7 @@ export async function PATCH(
         }, 0);
 
         // 5. Verify difference = statement_ending_balance - cleared_balance = 0
-        const difference = Number(recon.statement_ending_balance) - clearedBalance;
+        const difference = Number(statement_ending_balance) - clearedBalance;
         if (difference !== 0) {
             return NextResponse.json({ error: 'Reconciliation does not balance' }, { status: 400 });
         }

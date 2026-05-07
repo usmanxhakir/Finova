@@ -86,7 +86,7 @@ export function useStartReconciliation() {
 export function useCompleteReconciliation() {
     const [isLoading, setIsLoading] = useState(false)
 
-    const complete = async (accountId: string, data: { reconciliation_id: string, cleared_line_ids: string[] }) => {
+    const complete = async (accountId: string, data: { reconciliation_id: string, cleared_line_ids: string[], statement_ending_balance: number }) => {
         setIsLoading(true)
         try {
             const res = await fetch(`/api/reconciliation/${accountId}/complete`, {

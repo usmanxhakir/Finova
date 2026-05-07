@@ -100,7 +100,8 @@ export function ReconcileScreen({ accountId, account }: ReconcileScreenProps) {
         try {
             await complete(accountId, {
                 reconciliation_id: reconciliation.id,
-                cleared_line_ids: Array.from(clearedLineIds)
+                cleared_line_ids: Array.from(clearedLineIds),
+                statement_ending_balance: statementEndingBalance
             })
             router.push('/banking')
         } catch (err) {

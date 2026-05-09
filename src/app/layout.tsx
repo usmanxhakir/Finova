@@ -21,7 +21,7 @@ const dmSerif = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Finova",
+  title: "Fintrax",
   description: "Accounting and Invoicing Application",
 };
 

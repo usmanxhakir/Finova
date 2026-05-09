@@ -47,7 +47,7 @@ export async function POST(request: Request) {
               payee: intent.data.payee ?? 'Unknown',
               description: intent.data.description ?? '',
               amount: intent.data.amount,            // already cents
-              expense_account_id: expenseAccountId,
+              account_id: expenseAccountId,          // expenses API reads this as account_id
               payment_account_id: intent.resolved.payment_account_id,
             }),
           })
@@ -64,12 +64,17 @@ export async function POST(request: Request) {
           const dueDate = new Date(
             Date.now() + (intent.data.due_days ?? 30) * 86400000
           ).toISOString().split('T')[0]
-          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => ({
-            description: li.description ?? '',
-            quantity: li.quantity ?? 1,
-            rate: li.rate ?? 0,
-            account_id: li.account_id ?? null,
-          }))
+          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
+            const quantity = li.quantity ?? 1
+            const rate = li.rate ?? 0
+            return {
+              description: li.description ?? '',
+              quantity,
+              rate,
+              amount: Math.round(quantity * rate),   // cents, integer, no floats
+              account_id: li.account_id ?? null,
+            }
+          })
 
           if (lineItems.length === 0) {
             return {
@@ -108,12 +113,17 @@ export async function POST(request: Request) {
           const dueDate = new Date(
             Date.now() + (intent.data.due_days ?? 30) * 86400000
           ).toISOString().split('T')[0]
-          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => ({
-            description: li.description ?? '',
-            quantity: li.quantity ?? 1,
-            rate: li.rate ?? 0,
-            account_id: li.account_id ?? null,
-          }))
+          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
+            const quantity = li.quantity ?? 1
+            const rate = li.rate ?? 0
+            return {
+              description: li.description ?? '',
+              quantity,
+              rate,
+              amount: Math.round(quantity * rate),   // cents, integer, no floats
+              account_id: li.account_id ?? null,
+            }
+          })
 
           if (lineItems.length === 0) {
             return {

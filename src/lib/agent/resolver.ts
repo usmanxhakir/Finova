@@ -30,10 +30,17 @@ export function resolveIntent(
   switch (intent.intent) {
     case 'CREATE_INVOICE': {
       // Resolve contact
-      const contact = fuzzyFind(context.contacts, intent.data.contact_name)
+      const contactName = intent.data.contact_name 
+        ?? (intent.data as any).customer_name 
+        ?? (intent.data as any).client_name
+      const contact = fuzzyFind(context.contacts, contactName)
       resolved.contact_id = contact?.id
-      if (!contact && intent.data.contact_name) {
-        unresolved.push({ type: 'contact', name: intent.data.contact_name, intent_index: intentIndex })
+      if (!contact) {
+        unresolved.push({ 
+          type: 'contact', 
+          name: contactName ?? 'unknown customer', 
+          intent_index: intentIndex 
+        })
       }
 
       // Resolve line items via items list

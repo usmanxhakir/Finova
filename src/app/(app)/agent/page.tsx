@@ -314,7 +314,7 @@ export default function AgentPage() {
       return {
         type: 'BILL',
         description: line?.description ?? intent.data.description ?? '',
-        contact_name: intent.data.vendor_name ?? '',
+        contact_name: intent.resolved?.contact_id ? (intent.data.vendor_name ?? '') : '',
         contact_id: intent.resolved?.contact_id ?? '',
         account_name: line?.item_name ?? line?.account_name ?? '',
         account_id: line?.item_id ?? '',
@@ -331,7 +331,7 @@ export default function AgentPage() {
       return {
         type: 'INVOICE',
         description: line?.description ?? intent.data.description ?? '',
-        contact_name: intent.data.contact_name ?? '',
+        contact_name: intent.resolved?.contact_id ? (intent.data.contact_name ?? '') : '',
         contact_id: intent.resolved?.contact_id ?? '',
         account_name: line?.item_name ?? line?.account_name ?? '',
         account_id: line?.item_id ?? '',

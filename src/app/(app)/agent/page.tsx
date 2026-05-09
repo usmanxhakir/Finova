@@ -3,6 +3,104 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Sparkles, ArrowRight, Loader2, Trash2, AlertTriangle, CheckCircle2, X } from 'lucide-react'
+import type { ParseResponse, UnresolvedEntity, ResolvedIntent } from '@/types/agent'
+
+function UnresolvedMessage({
+  entities,
+  onDismiss,
+  onContinue,
+  onCreateNew,
+}: {
+  entities: UnresolvedEntity[]
+  onDismiss: () => void
+  onContinue: () => void
+  onCreateNew: (type: UnresolvedEntity['type'], name: string) => void
+}) {
+  const contacts = entities.filter(e => e.type === 'contact')
+  const items = entities.filter(e => e.type === 'item')
+  const accounts = entities.filter(e => e.type === 'account' || e.type === 'payment_account')
+
+  const lines: string[] = []
+  if (contacts.length) lines.push(`contact${contacts.length > 1 ? 's' : ''} **${contacts.map(e => e.name).join(', ')}**`)
+  if (items.length) lines.push(`item${items.length > 1 ? 's' : ''} **${items.map(e => e.name).join(', ')}**`)
+  if (accounts.length) lines.push(`account${accounts.length > 1 ? 's' : ''} **${accounts.map(e => e.name).join(', ')}**`)
+
+  const createButtons = entities
+    .filter((e, i, arr) => arr.findIndex(x => x.type === e.type && x.name === e.name) === i)
+    .map(e => {
+      const label = e.type === 'contact' ? '+ Create Contact'
+        : e.type === 'item' ? '+ Create Item'
+        : '+ Add Account'
+      return { label, entity: e }
+    })
+
+  return (
+    <div style={{
+      background: '#f3f4f6',
+      borderRadius: '18px 18px 18px 4px',
+      padding: '12px 14px',
+      maxWidth: '85%',
+      fontSize: '13px',
+      color: '#111118',
+      lineHeight: '1.5',
+    }}>
+      <div style={{ marginBottom: '10px' }}>
+        I couldn't find {lines.join(' or ')} in your records. What would you like to do?
+      </div>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          onClick={onDismiss}
+          style={{
+            background: 'white',
+            border: '1px solid #e5e7eb',
+            borderRadius: '6px',
+            padding: '5px 10px',
+            fontSize: '12px',
+            color: '#6b7280',
+            cursor: 'pointer',
+          }}
+        >
+          ✕ Cancel
+        </button>
+
+        <button
+          onClick={onContinue}
+          style={{
+            background: 'white',
+            border: '1px solid #7c3aed',
+            borderRadius: '6px',
+            padding: '5px 10px',
+            fontSize: '12px',
+            color: '#7c3aed',
+            cursor: 'pointer',
+            fontWeight: '500',
+          }}
+        >
+          Continue Anyway
+        </button>
+
+        {createButtons.map(({ label, entity }) => (
+          <button
+            key={`${entity.type}-${entity.name}`}
+            onClick={() => onCreateNew(entity.type, entity.name)}
+            style={{
+              background: '#7c3aed',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '5px 10px',
+              fontSize: '12px',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: '500',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,6 +270,8 @@ export default function AgentPage() {
   const [results, setResults] = useState<ExecuteResult[] | null>(null)
   const [clarification, setClarification] = useState<string | null>(null)
   const [phase, setPhase] = useState<'input' | 'review' | 'done'>('input')
+  const [unresolvedEntities, setUnresolvedEntities] = useState<UnresolvedEntity[]>([])
+  const [pendingParseResult, setPendingParseResult] = useState<ParseResponse | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Beta modal on first visit
@@ -208,57 +308,86 @@ export default function AgentPage() {
     setShowBeta(false)
   }
 
-  function buildEntry(raw: {
-    type?: string
-    description?: string
-    contact_name?: string
-    account_name?: string
-    amount?: number
-    date?: string
-    due_date?: string
-    notes?: string
-  }): AgentEntry {
-    const type = (['BILL', 'INVOICE', 'EXPENSE'].includes(raw.type ?? '') ? raw.type : 'EXPENSE') as AgentEntry['type']
-
-    // Resolve account
-    const accountPool = type === 'INVOICE' ? revenueAccounts(accounts) : expenseAccounts(accounts)
-    let account: AccountOption | null = null
-    if (raw.account_name) {
-      account = accounts.find(a => a.name.toLowerCase() === raw.account_name!.toLowerCase()) ?? null
-      if (!account) account = fuzzyFindAccount(raw.account_name, accountPool)
+  function mapIntentToEntry(intent: ResolvedIntent): AgentEntry | null {
+    if (intent.intent === 'CREATE_BILL') {
+      const line = intent.resolved?.line_items?.[0] || intent.data?.line_items?.[0]
+      return {
+        type: 'BILL',
+        description: line?.description ?? intent.data.description ?? '',
+        contact_name: intent.data.vendor_name ?? '',
+        contact_id: intent.resolved?.contact_id ?? '',
+        account_name: line?.item_name ?? line?.account_name ?? '',
+        account_id: line?.account_id ?? '',
+        payment_account_id: '',
+        payment_account_name: '',
+        amount: line?.amount ?? line?.rate ?? intent.data.amount ?? 0,
+        date: intent.data.date ?? todayISO,
+        due_date: intent.data.due_days ? new Date(Date.now() + intent.data.due_days * 864e5).toISOString().split('T')[0] : in30Days,
+        notes: intent.data.notes ?? '',
+      }
     }
-
-    // Resolve contact
-    const contactPool = type === 'INVOICE' ? customerContacts(contacts) : vendorContacts(contacts)
-    let contact: ContactOption | null = null
-    if (raw.contact_name) {
-      contact = contacts.find(c => c.name.toLowerCase() === raw.contact_name!.toLowerCase()) ?? null
-      if (!contact) contact = fuzzyFindContact(raw.contact_name, contactPool)
+    if (intent.intent === 'CREATE_INVOICE') {
+      const line = intent.resolved?.line_items?.[0] || intent.data?.line_items?.[0]
+      return {
+        type: 'INVOICE',
+        description: line?.description ?? intent.data.description ?? '',
+        contact_name: intent.data.contact_name ?? '',
+        contact_id: intent.resolved?.contact_id ?? '',
+        account_name: line?.item_name ?? line?.account_name ?? '',
+        account_id: line?.account_id ?? '',
+        payment_account_id: '',
+        payment_account_name: '',
+        amount: line?.amount ?? line?.rate ?? intent.data.amount ?? 0,
+        date: intent.data.date ?? todayISO,
+        due_date: intent.data.due_days ? new Date(Date.now() + intent.data.due_days * 864e5).toISOString().split('T')[0] : in30Days,
+        notes: intent.data.notes ?? '',
+      }
     }
-
-    // Default payment account: first bank account
-    const defaultBank = bankAccounts(accounts)[0]
-
-    // Normalize amount to cents — if AI returned dollars accidentally, fix it
-    let amount = typeof raw.amount === 'number' ? raw.amount : 0
-    if (amount > 0 && amount < 500 && amount % 1 !== 0) {
-      amount = Math.round(amount * 100)
+    if (intent.intent === 'CREATE_EXPENSE') {
+      return {
+        type: 'EXPENSE',
+        description: intent.data.description ?? '',
+        contact_name: intent.data.payee ?? '',
+        contact_id: '',
+        account_name: intent.data.expense_account_name ?? '',
+        account_id: intent.resolved?.account_id ?? '',
+        payment_account_id: intent.resolved?.payment_account_id ?? '',
+        payment_account_name: intent.data.payment_account_name ?? '',
+        amount: intent.data.amount ?? 0,
+        date: intent.data.date ?? todayISO,
+        due_date: in30Days,
+        notes: intent.data.notes ?? '',
+      }
     }
+    return null
+  }
 
-    return {
-      type,
-      description: raw.description ?? '',
-      contact_name: contact?.name ?? raw.contact_name ?? '',
-      contact_id: contact?.id ?? '',
-      account_name: account?.name ?? raw.account_name ?? '',
-      account_id: account?.id ?? '',
-      payment_account_id: defaultBank?.id ?? '',
-      payment_account_name: defaultBank?.name ?? '',
-      amount,
-      date: raw.date ?? todayISO,
-      due_date: raw.due_date ?? in30Days,
-      notes: raw.notes ?? '',
+  function handleUnresolvedDismiss() {
+    setUnresolvedEntities([])
+    setPendingParseResult(null)
+  }
+
+  function handleUnresolvedContinue() {
+    if (pendingParseResult) {
+      const validIntents = (pendingParseResult.intents || []).filter(i => 
+        !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
+      )
+      const built = validIntents.map(mapIntentToEntry).filter(Boolean) as AgentEntry[]
+      setEntries(built)
+      setPhase(built.length > 0 ? 'review' : 'input')
     }
+    setUnresolvedEntities([])
+    setPendingParseResult(null)
+  }
+
+  function handleCreateNew(type: UnresolvedEntity['type'], name: string) {
+    const urls: Record<string, string> = {
+      contact: '/contacts',
+      item: '/items',
+      account: '/accounts',
+      payment_account: '/accounts',
+    }
+    window.open(urls[type], '_blank')
   }
 
   async function handleSubmit() {
@@ -274,10 +403,7 @@ export default function AgentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: resolved }),
       })
-      const data = await res.json() as {
-        entries?: unknown[]
-        clarification_needed?: string | null
-      }
+      const data = await res.json() as ParseResponse
 
       if (data.clarification_needed) {
         setClarification(data.clarification_needed)
@@ -285,7 +411,17 @@ export default function AgentPage() {
         return
       }
 
-      const built = (data.entries ?? []).map((e) => buildEntry(e as Parameters<typeof buildEntry>[0]))
+      if (data.unresolved_entities && data.unresolved_entities.length > 0) {
+        setPendingParseResult(data)
+        setUnresolvedEntities(data.unresolved_entities)
+        setIsLoading(false)
+        return
+      }
+
+      const validIntents = (data.intents || []).filter(i => 
+        !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
+      )
+      const built = validIntents.map(mapIntentToEntry).filter(Boolean) as AgentEntry[]
       setEntries(built)
       setPhase(built.length > 0 ? 'review' : 'input')
     } catch {
@@ -490,6 +626,17 @@ export default function AgentPage() {
                 : <>Parse entries <ArrowRight size={14} /></>}
             </button>
           </div>
+
+          {unresolvedEntities.length > 0 && (
+            <div className="mt-4">
+              <UnresolvedMessage 
+                entities={unresolvedEntities}
+                onDismiss={handleUnresolvedDismiss}
+                onContinue={handleUnresolvedContinue}
+                onCreateNew={handleCreateNew}
+              />
+            </div>
+          )}
 
           <div className="mt-6 border-t border-[#f3f4f6] pt-5">
             <p className="text-[11px] text-[#9ca3af] mb-3 uppercase tracking-wide font-medium">Try an example</p>

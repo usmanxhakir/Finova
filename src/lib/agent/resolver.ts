@@ -1,46 +1,5 @@
-import type {
-  ParsedIntent,
-  ResolvedIntent,
-  ResolvedLineItem,
-  AgentLineItem,
-} from '@/types/agent'
+import type { ParsedIntent, ResolvedIntent, ResolvedLineItem, AgentLineItem, UnresolvedEntity } from '@/types/agent'
 import type { AgentContext } from './context-loader'
-
-// Returns true only when the value has a decimal component (definitely dollars, not cents).
-// Whole numbers are left as-is to avoid double-multiplying if the model correctly
-// returned cents (e.g. 34000 for $340). The system prompt is the primary fix.
-function isLikelyDollars(value: unknown): boolean {
-  if (typeof value !== 'number') return false
-  if (value === 0) return false
-  // If the value has a fractional part it must be dollars (cents are always integers)
-  return value % 1 !== 0
-}
-
-function normalizeToCents(data: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...data }
-
-  // Normalize line_items rates and amounts
-  if (Array.isArray(result.line_items)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    result.line_items = (result.line_items as any[]).map((item: Record<string, unknown>) => ({
-      ...item,
-      rate: isLikelyDollars(item.rate) ? Math.round((item.rate as number) * 100) : (item.rate ?? 0),
-      amount: isLikelyDollars(item.amount) ? Math.round((item.amount as number) * 100) : (item.amount ?? 0),
-    }))
-  }
-
-  // Normalize top-level amount (for expenses)
-  if (result.amount !== undefined) {
-    result.amount = isLikelyDollars(result.amount) ? Math.round((result.amount as number) * 100) : result.amount
-  }
-
-  // Normalize default_rate (for items)
-  if (result.default_rate !== undefined) {
-    result.default_rate = isLikelyDollars(result.default_rate) ? Math.round((result.default_rate as number) * 100) : result.default_rate
-  }
-
-  return result
-}
 
 function fuzzyFind<T extends { id: string; name: string }>(
   list: T[],
@@ -55,44 +14,70 @@ function fuzzyFind<T extends { id: string; name: string }>(
   )
 }
 
-function resolveLineItems(
-  lineItems: AgentLineItem[] | undefined,
-  accounts: AgentContext['accounts'],
-  accountType: 'revenue' | 'expense'
-): ResolvedLineItem[] {
-  return (lineItems ?? []).map(li => {
-    const filtered = accounts.filter(a => a.type === accountType)
-    const account = fuzzyFind(filtered, li.account_name)
-    return { ...li, account_id: account?.id }
-  })
+export interface ResolveResult {
+  intent: ResolvedIntent
+  unresolved: UnresolvedEntity[]
 }
 
 export function resolveIntent(
   intent: ParsedIntent,
-  context: AgentContext
-): ResolvedIntent {
+  context: AgentContext,
+  intentIndex: number
+): ResolveResult {
   const resolved: ResolvedIntent['resolved'] = {}
+  const unresolved: UnresolvedEntity[] = []
 
   switch (intent.intent) {
     case 'CREATE_INVOICE': {
+      // Resolve contact
       const contact = fuzzyFind(context.contacts, intent.data.contact_name)
       resolved.contact_id = contact?.id
-      resolved.line_items = resolveLineItems(
-        intent.data.line_items,
-        context.accounts,
-        'revenue'
-      )
+      if (!contact && intent.data.contact_name) {
+        unresolved.push({ type: 'contact', name: intent.data.contact_name, intent_index: intentIndex })
+      }
+
+      // Resolve line items via items list
+      resolved.line_items = (intent.data.line_items ?? []).map(li => {
+        const item = fuzzyFind(context.items, li.item_name)
+        if (!item && li.item_name) {
+          // Only push once per unique item name
+          if (!unresolved.find(u => u.type === 'item' && u.name === li.item_name)) {
+            unresolved.push({ type: 'item', name: li.item_name!, intent_index: intentIndex })
+          }
+        }
+        return {
+          ...li,
+          item_id: item?.id,
+          // Income account comes from the item automatically
+          account_id: item ? (context.accounts.find(a => a.id === (item as any).income_account_id))?.id : undefined,
+        }
+      })
       break
     }
 
     case 'CREATE_BILL': {
+      // Resolve contact
       const contact = fuzzyFind(context.contacts, intent.data.vendor_name)
       resolved.contact_id = contact?.id
-      resolved.line_items = resolveLineItems(
-        intent.data.line_items,
-        context.accounts,
-        'expense'
-      )
+      if (!contact && intent.data.vendor_name) {
+        unresolved.push({ type: 'contact', name: intent.data.vendor_name, intent_index: intentIndex })
+      }
+
+      // Resolve line items via items list
+      resolved.line_items = (intent.data.line_items ?? []).map(li => {
+        const item = fuzzyFind(context.items, li.item_name)
+        if (!item && li.item_name) {
+          if (!unresolved.find(u => u.type === 'item' && u.name === li.item_name)) {
+            unresolved.push({ type: 'item', name: li.item_name!, intent_index: intentIndex })
+          }
+        }
+        return {
+          ...li,
+          item_id: item?.id,
+          // Expense account comes from the item automatically
+          account_id: item ? (context.accounts.find(a => a.id === (item as any).expense_account_id))?.id : undefined,
+        }
+      })
       break
     }
 
@@ -101,8 +86,23 @@ export function resolveIntent(
       const bankAccounts = context.accounts.filter(a =>
         ['bank', 'cash', 'credit_card'].includes(a.sub_type)
       )
-      resolved.account_id = fuzzyFind(expenseAccounts, intent.data.expense_account_name)?.id
-      resolved.payment_account_id = fuzzyFind(bankAccounts, intent.data.payment_account_name)?.id
+
+      const expenseAccount = fuzzyFind(expenseAccounts, intent.data.expense_account_name)
+      const paymentAccount = fuzzyFind(bankAccounts, intent.data.payment_account_name)
+
+      resolved.account_id = expenseAccount?.id
+      resolved.payment_account_id = paymentAccount?.id
+
+      if (!expenseAccount && intent.data.expense_account_name) {
+        unresolved.push({ type: 'account', name: intent.data.expense_account_name, intent_index: intentIndex })
+      }
+      if (!paymentAccount && intent.data.payment_account_name) {
+        unresolved.push({ type: 'payment_account', name: intent.data.payment_account_name, intent_index: intentIndex })
+      }
+      // Payment account missing entirely is also flagged
+      if (!intent.data.payment_account_name) {
+        unresolved.push({ type: 'payment_account', name: 'unknown', intent_index: intentIndex })
+      }
       break
     }
 
@@ -115,6 +115,5 @@ export function resolveIntent(
     }
   }
 
-  const normalizedData = normalizeToCents(intent.data as Record<string, unknown>)
-  return { ...intent, data: normalizedData as ParsedIntent['data'], resolved }
+  return { intent: { ...intent, resolved }, unresolved }
 }

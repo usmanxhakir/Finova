@@ -1,8 +1,9 @@
 export const runtime = 'edge'
 
 import { createClient } from '@/lib/supabase/server'
-import { buildSystemPrompt } from '@/lib/agent/context-loader'
-import { loadAgentContext } from '@/lib/agent/context-loader'
+import { buildSystemPrompt, loadAgentContext } from '@/lib/agent/context-loader'
+import { resolveIntent } from '@/lib/agent/resolver'
+import type { ParsedIntent, UnresolvedEntity } from '@/types/agent'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -50,17 +51,29 @@ export async function POST(request: Request) {
   try {
     const clean = rawContent.replace(/```json|```/g, '').trim()
     const json = JSON.parse(clean) as {
-      entries?: unknown[]
+      intents?: ParsedIntent[]
       clarification_needed?: string | null
     }
-    return Response.json({
-      entries: json.entries ?? [],
+
+    const allUnresolved: UnresolvedEntity[] = []
+
+    const parsed = {
+      intents: (json.intents ?? []).map((i: ParsedIntent, index: number) => {
+        const result = resolveIntent(i, context, index)
+        allUnresolved.push(...result.unresolved)
+        return result.intent
+      }),
+      raw_message: message,
       clarification_needed: json.clarification_needed ?? null,
-    })
+      unresolved_entities: allUnresolved,
+    }
+
+    return Response.json(parsed)
   } catch {
     console.error('[Agent Parse] Failed to parse AI JSON:', rawContent)
     return Response.json({
-      entries: [],
+      intents: [],
+      unresolved_entities: [],
       clarification_needed: "I had trouble understanding that. Could you rephrase?",
     })
   }

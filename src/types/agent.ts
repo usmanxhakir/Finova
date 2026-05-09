@@ -11,8 +11,16 @@ export type IntentType =
 export interface AgentLineItem {
   description: string
   quantity: number
-  rate: number        // CENTS — integer only, never float
-  account_name?: string
+  rate: number           // CENTS — integer only, never float
+  item_name?: string     // AI provides this for bills/invoices — fuzzy matched to items list
+  item_id?: string       // resolved by resolver after fuzzy match
+  account_name?: string  // only used for manual fallback, not primary
+}
+
+export interface UnresolvedEntity {
+  type: 'contact' | 'item' | 'account' | 'payment_account'
+  name: string           // what the AI returned that couldn't be matched
+  intent_index: number   // which intent in the array this belongs to
 }
 
 export interface ParsedIntent {
@@ -66,9 +74,11 @@ export interface ParseResponse {
   intents: ParsedIntent[]
   raw_message: string
   clarification_needed?: string | null
+  unresolved_entities: UnresolvedEntity[]  // empty array if everything resolved
 }
 
 export interface ResolvedLineItem extends AgentLineItem {
+  item_id?: string
   account_id?: string
 }
 

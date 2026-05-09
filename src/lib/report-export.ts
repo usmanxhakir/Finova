@@ -35,7 +35,7 @@ export const reportExport = {
         // Header Section
         doc.setFontSize(18)
         doc.setTextColor(40)
-        doc.text(companyName || 'FINOVA REPORT', 14, 22)
+        doc.text(companyName || 'FYNTRAX REPORT', 14, 22)
 
         doc.setFontSize(14)
         doc.setTextColor(100)

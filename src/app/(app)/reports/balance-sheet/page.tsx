@@ -227,7 +227,7 @@ export default function BalanceSheetPage() {
 
         reportExport.toPDF({
             title: 'Balance Sheet',
-            companyName: companySettings?.name || 'Finova',
+            companyName: companySettings?.name || 'Fyntrax',
             dateRange: `As of ${format(asOfDate, 'MMMM dd, yyyy')}`,
             headers,
             rows,

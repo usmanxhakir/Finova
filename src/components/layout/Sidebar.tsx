@@ -31,6 +31,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 // ─── Pulse ring animation injected once ───────────────────────────────────────
 const PULSE_STYLE = `
@@ -47,26 +53,6 @@ const PULSE_STYLE = `
   animation: pulse-ring 1.4s cubic-bezier(0.4,0,0.6,1) infinite;
 }
 `;
-
-// ─── Tooltip wrapper (collapsed sidebar only) ─────────────────────────────────
-function Tooltip({ label, section }: { label: string; section?: string }) {
-    return (
-        <span
-            className="pointer-events-none absolute left-full ml-3 z-50 flex items-center opacity-0 invisible
-                       translate-x-[-4px] group-hover:opacity-100 group-hover:visible group-hover:translate-x-0
-                       transition-all duration-150 ease-out whitespace-nowrap"
-        >
-            {/* arrow */}
-            <span className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 w-2 h-2 bg-gray-900 rotate-45 rounded-sm" />
-            <span className="px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg">
-                {section && (
-                    <span className="text-gray-400 mr-1">{section} ·</span>
-                )}
-                {label}
-            </span>
-        </span>
-    );
-}
 
 // ─── Nav data ─────────────────────────────────────────────────────────────────
 const navItems = [
@@ -120,7 +106,7 @@ export function Sidebar() {
 
     const navLinkClass = (active: boolean, extra = "") =>
         cn(
-            "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
+            "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150",
             active ? activeItem : inactiveItem,
             extra,
         );
@@ -134,13 +120,13 @@ export function Sidebar() {
     // ── Collapsed nav item ────────────────────────────────────────────────────
     const collapsedItem = (active: boolean, extra = "") =>
         cn(
-            "group relative flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-150",
+            "flex items-center justify-center w-10 h-10 mx-auto rounded-xl transition-all duration-150",
             active ? activeItem : "text-zinc-400 hover:bg-gray-50 hover:text-zinc-700",
             extra,
         );
 
     return (
-        <>
+        <TooltipProvider delayDuration={100}>
             {/* Inject pulse keyframes once */}
             <style dangerouslySetInnerHTML={{ __html: PULSE_STYLE }} />
 
@@ -162,13 +148,13 @@ export function Sidebar() {
                         <div className="w-8 h-8 rounded-lg bg-[#7c3aed] flex items-center justify-center text-white shrink-0">
                             <img
                                 src="/finova-icon.png"
-                                alt="Fintrax Logo"
+                                alt="Fyntrax Logo"
                                 className="h-6 w-6 object-cover rounded"
                             />
                         </div>
                         {!collapsed && (
                             <span className="font-bold text-lg text-gray-900 tracking-tight">
-                                Fintrax
+                                Fyntrax
                             </span>
                         )}
                     </Link>
@@ -194,10 +180,16 @@ export function Sidebar() {
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             {collapsed ? (
-                                <button className="group relative w-10 h-10 rounded-full bg-[#7c3aed] hover:bg-[#6d28d9] text-white flex items-center justify-center shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-105 transition-all duration-150">
-                                    <Plus size={20} />
-                                    <Tooltip label="Create New" />
-                                </button>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button className="w-10 h-10 rounded-full bg-[#7c3aed] hover:bg-[#6d28d9] text-white flex items-center justify-center shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-105 transition-all duration-150">
+                                            <Plus size={20} />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" sideOffset={8}>
+                                        <p>Create New</p>
+                                    </TooltipContent>
+                                </Tooltip>
                             ) : (
                                 <button className="w-full h-11 flex items-center justify-between px-4 rounded-xl bg-[#7c3aed] hover:bg-[#6d28d9] text-white font-semibold text-sm shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:-translate-y-0.5 transition-all duration-150">
                                     <div className="flex items-center gap-2">
@@ -263,10 +255,16 @@ export function Sidebar() {
 
                         if (collapsed) {
                             return (
-                                <Link key={item.name} href={item.href} className={collapsedItem(isActive || item.isAgent)}>
-                                    <item.icon size={18} />
-                                    <Tooltip label={item.name} />
-                                </Link>
+                                <Tooltip key={item.name}>
+                                    <TooltipTrigger asChild>
+                                        <Link href={item.href} className={collapsedItem(isActive || item.isAgent)}>
+                                            <item.icon size={18} />
+                                        </Link>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" sideOffset={8}>
+                                        <p>{item.name}</p>
+                                    </TooltipContent>
+                                </Tooltip>
                             );
                         }
 
@@ -291,13 +289,18 @@ export function Sidebar() {
 
                     {/* ── ACCOUNTING section ────────────────────────────── */}
                     {collapsed ? (
-                        /* Collapsed divider with tooltip */
-                        <div className="group relative flex items-center justify-center my-3 cursor-default">
-                            <div className="relative flex items-center justify-center w-6 h-[3px] bg-gray-200 rounded-full">
-                                <div className="absolute w-[3px] h-[3px] bg-gray-300 rounded-full" />
-                            </div>
-                            <Tooltip label="Accounting" />
-                        </div>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex items-center justify-center my-3 cursor-default">
+                                    <div className="relative flex items-center justify-center w-6 h-[3px] bg-gray-200 rounded-full">
+                                        <div className="absolute w-[3px] h-[3px] bg-gray-300 rounded-full" />
+                                    </div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" sideOffset={8}>
+                                <p>Accounting</p>
+                            </TooltipContent>
+                        </Tooltip>
                     ) : (
                         <div className="pt-5 pb-2 px-3">
                             <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase">
@@ -310,10 +313,16 @@ export function Sidebar() {
                     {(() => {
                         const isActive = pathname === "/accounts" || pathname.startsWith("/accounts/");
                         return collapsed ? (
-                            <Link href="/accounts" className={collapsedItem(isActive)}>
-                                <BookOpen size={18} />
-                                <Tooltip label="Chart of Accounts" section="Accounting" />
-                            </Link>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href="/accounts" className={collapsedItem(isActive)}>
+                                        <BookOpen size={18} />
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p><span className="text-gray-400 mr-1">Accounting ·</span> Chart of Accounts</p>
+                                </TooltipContent>
+                            </Tooltip>
                         ) : (
                             <Link href="/accounts" className={navLinkClass(isActive)}>
                                 <div className={iconBoxClass(isActive)}><BookOpen size={16} /></div>
@@ -326,10 +335,16 @@ export function Sidebar() {
                     {(() => {
                         const isActive = pathname === "/journal-entries" || pathname.startsWith("/journal-entries/");
                         return collapsed ? (
-                            <Link href="/journal-entries" className={collapsedItem(isActive)}>
-                                <ClipboardList size={18} />
-                                <Tooltip label="Journal Entries" section="Accounting" />
-                            </Link>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href="/journal-entries" className={collapsedItem(isActive)}>
+                                        <ClipboardList size={18} />
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p><span className="text-gray-400 mr-1">Accounting ·</span> Journal Entries</p>
+                                </TooltipContent>
+                            </Tooltip>
                         ) : (
                             <Link href="/journal-entries" className={navLinkClass(isActive)}>
                                 <div className={iconBoxClass(isActive)}><ClipboardList size={16} /></div>
@@ -342,17 +357,21 @@ export function Sidebar() {
                     {(() => {
                         const isActive = pathname === "/banking" || pathname.startsWith("/banking/");
                         return collapsed ? (
-                            <Link href="/banking" className={cn(collapsedItem(isActive), "relative")}>
-                                <div className="relative">
-                                    <Landmark size={18} />
-                                    {hasUnreconciled && (
-                                        <span className="absolute -top-0.5 -right-0.5 flex">
-                                            <span className="pulse-ring relative w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-                                        </span>
-                                    )}
-                                </div>
-                                <Tooltip label="Banking" section="Accounting" />
-                            </Link>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href="/banking" className={cn(collapsedItem(isActive), "relative")}>
+                                        <Landmark size={18} />
+                                        {hasUnreconciled && (
+                                            <span className="absolute -top-0.5 -right-0.5 flex">
+                                                <span className="pulse-ring relative w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                                            </span>
+                                        )}
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p><span className="text-gray-400 mr-1">Accounting ·</span> Banking</p>
+                                </TooltipContent>
+                            </Tooltip>
                         ) : (
                             <Link href="/banking" className={navLinkClass(isActive)}>
                                 <div className={cn(iconBoxClass(isActive), "relative")}>
@@ -375,12 +394,18 @@ export function Sidebar() {
 
                     {/* ── ANALYSIS section ─────────────────────────────── */}
                     {collapsed ? (
-                        <div className="group relative flex items-center justify-center my-3 cursor-default">
-                            <div className="relative flex items-center justify-center w-6 h-[3px] bg-gray-200 rounded-full">
-                                <div className="absolute w-[3px] h-[3px] bg-gray-300 rounded-full" />
-                            </div>
-                            <Tooltip label="Analysis" />
-                        </div>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex items-center justify-center my-3 cursor-default">
+                                    <div className="relative flex items-center justify-center w-6 h-[3px] bg-gray-200 rounded-full">
+                                        <div className="absolute w-[3px] h-[3px] bg-gray-300 rounded-full" />
+                                    </div>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" sideOffset={8}>
+                                <p>Analysis</p>
+                            </TooltipContent>
+                        </Tooltip>
                     ) : (
                         <div className="pt-5 pb-2 px-3">
                             <p className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase">
@@ -393,10 +418,16 @@ export function Sidebar() {
                     {(() => {
                         const isActive = pathname === "/reports" || pathname.startsWith("/reports/");
                         return collapsed ? (
-                            <Link href="/reports" className={collapsedItem(isActive)}>
-                                <BarChart3 size={18} />
-                                <Tooltip label="Reports" />
-                            </Link>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href="/reports" className={collapsedItem(isActive)}>
+                                        <BarChart3 size={18} />
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p><span className="text-gray-400 mr-1">Analysis ·</span> Reports</p>
+                                </TooltipContent>
+                            </Tooltip>
                         ) : (
                             <>
                                 <div className={cn(
@@ -406,7 +437,7 @@ export function Sidebar() {
                                     <Link
                                         href="/reports"
                                         className={cn(
-                                            "group flex flex-1 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                                            "flex flex-1 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-150",
                                             isActive ? "text-[#6d28d9]" : "text-zinc-600 hover:text-gray-900"
                                         )}
                                     >
@@ -452,10 +483,16 @@ export function Sidebar() {
                     {(() => {
                         const isActive = pathname === "/settings" || pathname.startsWith("/settings/");
                         return collapsed ? (
-                            <Link href="/settings" className={cn(collapsedItem(isActive), "mt-1")}>
-                                <Settings size={18} />
-                                <Tooltip label="Settings" />
-                            </Link>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Link href="/settings" className={cn(collapsedItem(isActive), "mt-1")}>
+                                        <Settings size={18} />
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p>Settings</p>
+                                </TooltipContent>
+                            </Tooltip>
                         ) : (
                             <Link href="/settings" className={cn(navLinkClass(isActive), "mt-1")}>
                                 <div className={iconBoxClass(isActive)}><Settings size={16} /></div>
@@ -468,11 +505,17 @@ export function Sidebar() {
                 {/* ── User footer ─────────────────────────────────────────── */}
                 <div className="border-t border-gray-100 p-3">
                     {collapsed ? (
-                        <div className="group relative flex items-center justify-center">
-                            <button className="w-10 h-10 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center hover:bg-violet-200 transition-colors">
-                                U
-                            </button>
-                            <Tooltip label="User Name — Admin · Click for menu" />
+                        <div className="flex items-center justify-center">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button className="w-10 h-10 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center hover:bg-violet-200 transition-colors">
+                                        U
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="right" sideOffset={8}>
+                                    <p>User Name — Admin · Click for menu</p>
+                                </TooltipContent>
+                            </Tooltip>
                         </div>
                     ) : (
                         <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group">
@@ -488,6 +531,6 @@ export function Sidebar() {
                     )}
                 </div>
             </aside>
-        </>
+        </TooltipProvider>
     );
 }

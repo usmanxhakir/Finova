@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ReceivePaymentsClient } from '@/components/receive-payments/ReceivePaymentsClient'
 
 export const metadata = {
-    title: 'Receive Payments | Finova',
+    title: 'Receive Payments | Fyntrax',
 }
 
 export default async function ReceivePaymentsPage() {

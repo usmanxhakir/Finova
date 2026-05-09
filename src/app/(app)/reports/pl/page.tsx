@@ -352,7 +352,7 @@ export default function ProfitLossPage() {
 
         reportExport.toPDF({
             title: 'Profit & Loss Statement',
-            companyName: companySettings?.name || 'Finova',
+            companyName: companySettings?.name || 'Fyntrax',
             dateRange: `From ${format(startDate, 'MMM dd, yyyy')} to ${format(endDate, 'MMM dd, yyyy')}`,
             headers,
             rows,

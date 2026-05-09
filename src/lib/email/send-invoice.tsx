@@ -273,7 +273,7 @@ export async function sendInvoiceEmail({
         `
 
         const { data, error } = await resend.emails.send({
-            from: `${settings?.name || 'Finova'} <onboarding@resend.dev>`,
+            from: `${settings?.name || 'Fyntrax'} <onboarding@resend.dev>`,
             to: [to],
             subject: subject,
             html: htmlBody,

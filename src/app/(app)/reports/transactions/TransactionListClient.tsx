@@ -192,7 +192,7 @@ export default function TransactionListClient({
 
         reportExport.toPDF({
             title: 'Transaction List',
-            companyName: companySettings?.name || 'Finova',
+            companyName: companySettings?.name || 'Fyntrax',
             dateRange: `${formatDate(startDate)} to ${formatDate(endDate)}`,
             headers,
             rows,

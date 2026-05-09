@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PayBillsClient } from '@/components/pay-bills/PayBillsClient'
 
 export const metadata = {
-    title: 'Pay Bills | Finova',
+    title: 'Pay Bills | Fyntrax',
 }
 
 export default async function PayBillsPage() {

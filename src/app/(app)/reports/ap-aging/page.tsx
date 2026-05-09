@@ -178,7 +178,7 @@ export default function APAgingPage() {
 
         reportExport.toPDF({
             title: 'A/P Aging Summary',
-            companyName: companySettings?.name || 'Finova',
+            companyName: companySettings?.name || 'Fyntrax',
             dateRange: `As of ${format(asOfDate, 'MMMM dd, yyyy')}`,
             headers,
             rows,

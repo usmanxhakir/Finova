@@ -1,6 +1,6 @@
-
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
     BarChart,
@@ -15,7 +15,8 @@ import {
     Pie,
     Cell,
 } from 'recharts'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, cn } from '@/lib/utils'
+import { Eye, EyeOff } from 'lucide-react'
 
 interface ChartProps {
     chartData: any[]
@@ -25,14 +26,58 @@ interface ChartProps {
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#82ca9d']
 
 export function DashboardCharts({ chartData, expenseBreakdown }: ChartProps) {
+    const [showRevenueChart, setShowRevenueChart] = useState(true)
+    const [showExpenseChart, setShowExpenseChart] = useState(true)
+    const [isLoaded, setIsLoaded] = useState(false)
+
+    // On mount, read from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem('dashboard_chart_visibility')
+        if (saved) {
+            try {
+                const { revenue, expense } = JSON.parse(saved)
+                setShowRevenueChart(revenue ?? true)
+                setShowExpenseChart(expense ?? true)
+            } catch (e) {
+                console.error("Failed to parse chart visibility", e)
+            }
+        }
+        setIsLoaded(true)
+    }, [])
+
+    // On change, save to localStorage
+    useEffect(() => {
+        if (!isLoaded) return
+        localStorage.setItem('dashboard_chart_visibility', JSON.stringify({
+            revenue: showRevenueChart,
+            expense: showExpenseChart
+        }))
+    }, [showRevenueChart, showExpenseChart, isLoaded])
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <Card className="border-2 border-zinc-100 shadow-sm overflow-hidden">
-                <CardHeader>
-                    <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Revenue vs Expenses</CardTitle>
-                    <p className="text-sm text-zinc-400 font-medium">Monthly trend for the last 6 months</p>
+            <Card className={cn(
+                "border-2 border-zinc-100 shadow-sm overflow-hidden transition-all duration-300",
+                !showRevenueChart ? "h-14" : ""
+            )}>
+                <CardHeader className="flex flex-row items-center justify-between py-3">
+                    <div>
+                        <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Revenue vs Expenses</CardTitle>
+                        {showRevenueChart && <p className="text-sm text-zinc-400 font-medium">Monthly trend for the last 6 months</p>}
+                    </div>
+                    <button 
+                        onClick={() => setShowRevenueChart(!showRevenueChart)}
+                        className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        {showRevenueChart ? <Eye size={18} /> : (
+                            <div className="flex items-center gap-1.5 px-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Show</span>
+                                <EyeOff size={16} />
+                            </div>
+                        )}
+                    </button>
                 </CardHeader>
-                <CardContent className="h-[400px]">
+                <CardContent className={cn("h-[400px] transition-all", !showRevenueChart && "hidden")}>
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -84,12 +129,28 @@ export function DashboardCharts({ chartData, expenseBreakdown }: ChartProps) {
                 </CardContent>
             </Card>
 
-            <Card className="border-2 border-zinc-100 shadow-sm overflow-hidden">
-                <CardHeader>
-                    <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Expense Breakdown</CardTitle>
-                    <p className="text-sm text-zinc-400 font-medium">Account-wise expenses for current month</p>
+            <Card className={cn(
+                "border-2 border-zinc-100 shadow-sm overflow-hidden transition-all duration-300",
+                !showExpenseChart ? "h-14" : ""
+            )}>
+                <CardHeader className="flex flex-row items-center justify-between py-3">
+                    <div>
+                        <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Expense Breakdown</CardTitle>
+                        {showExpenseChart && <p className="text-sm text-zinc-400 font-medium">Account-wise expenses for current month</p>}
+                    </div>
+                    <button 
+                        onClick={() => setShowExpenseChart(!showExpenseChart)}
+                        className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        {showExpenseChart ? <Eye size={18} /> : (
+                            <div className="flex items-center gap-1.5 px-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Show</span>
+                                <EyeOff size={16} />
+                            </div>
+                        )}
+                    </button>
                 </CardHeader>
-                <CardContent className="h-[400px]">
+                <CardContent className={cn("h-[400px] transition-all", !showExpenseChart && "hidden")}>
                     {expenseBreakdown.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-zinc-400 italic font-medium">
                             <p>No expenses recorded this month.</p>

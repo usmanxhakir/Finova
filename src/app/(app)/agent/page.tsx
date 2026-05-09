@@ -317,10 +317,10 @@ export default function AgentPage() {
         contact_name: intent.data.vendor_name ?? '',
         contact_id: intent.resolved?.contact_id ?? '',
         account_name: line?.item_name ?? line?.account_name ?? '',
-        account_id: line?.account_id ?? '',
+        account_id: line?.item_id ?? '',
         payment_account_id: '',
         payment_account_name: '',
-        amount: line?.amount ?? line?.rate ?? intent.data.amount ?? 0,
+        amount: line?.rate ?? intent.data.amount ?? 0,
         date: intent.data.date ?? todayISO,
         due_date: intent.data.due_days ? new Date(Date.now() + intent.data.due_days * 864e5).toISOString().split('T')[0] : in30Days,
         notes: intent.data.notes ?? '',
@@ -334,10 +334,10 @@ export default function AgentPage() {
         contact_name: intent.data.contact_name ?? '',
         contact_id: intent.resolved?.contact_id ?? '',
         account_name: line?.item_name ?? line?.account_name ?? '',
-        account_id: line?.account_id ?? '',
+        account_id: line?.item_id ?? '',
         payment_account_id: '',
         payment_account_name: '',
-        amount: line?.amount ?? line?.rate ?? intent.data.amount ?? 0,
+        amount: line?.rate ?? intent.data.amount ?? 0,
         date: intent.data.date ?? todayISO,
         due_date: intent.data.due_days ? new Date(Date.now() + intent.data.due_days * 864e5).toISOString().split('T')[0] : in30Days,
         notes: intent.data.notes ?? '',
@@ -369,7 +369,7 @@ export default function AgentPage() {
 
   function handleUnresolvedContinue() {
     if (pendingParseResult) {
-      const validIntents = (pendingParseResult.intents || []).filter(i => 
+      const validIntents = (pendingParseResult.intents as ResolvedIntent[] || []).filter(i => 
         !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
       )
       const built = validIntents.map(mapIntentToEntry).filter(Boolean) as AgentEntry[]
@@ -418,7 +418,7 @@ export default function AgentPage() {
         return
       }
 
-      const validIntents = (data.intents || []).filter(i => 
+      const validIntents = (data.intents as ResolvedIntent[] || []).filter(i => 
         !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
       )
       const built = validIntents.map(mapIntentToEntry).filter(Boolean) as AgentEntry[]

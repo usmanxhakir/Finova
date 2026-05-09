@@ -117,7 +117,7 @@ Expense shape:
   "amount": 4500,                         ← CENTS
   "expense_account_name": "General & Administrative",
   "payment_account_name": "Checking Account",
-  "date": "\${today}"
+  "date": "${today}"
 }
 
 ═══════════════════════════════════════
@@ -127,7 +127,7 @@ MONETARY RULES — NEVER BREAK
 - Never use decimals for any amount field.
 
 DATE RULES:
-- Today is \${today}
+- Today is ${today}
 - due_days defaults to 30 for bills/invoices if not specified
 
 OTHER RULES:
@@ -137,11 +137,11 @@ OTHER RULES:
 - For UNKNOWN or out-of-scope requests: explain politely in data.answer
 
 AVAILABLE CONTACTS:
-\${JSON.stringify(context.contacts)}
+${JSON.stringify(context.contacts)}
 
 AVAILABLE ITEMS (use item_name from this list for bills/invoices):
-\${JSON.stringify(context.items)}
+${JSON.stringify(context.items)}
 
 AVAILABLE ACCOUNTS (use account names for expenses only):
-\${JSON.stringify(context.accounts)}\`
+${JSON.stringify(context.accounts)}`
 }

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import * as z from 'zod'
@@ -18,14 +18,36 @@ import {
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { AlertCircle } from 'lucide-react'
 
 const loginSchema = z.object({
     email: z.string().email({ message: 'Invalid email address' }),
     password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
 })
 
-export default function LoginPage() {
+function LoginAlert({ reason }: { reason: string | null }) {
+    if (!reason) return null
+
+    const messages: Record<string, string> = {
+        deactivated: 'Your account has been deactivated. Please contact your administrator.',
+        invite_error: 'There was a problem with your invitation link. Please ask your administrator to resend it.',
+    }
+
+    const message = messages[reason]
+    if (!message) return null
+
+    return (
+        <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 mb-4">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" />
+            <span>{message}</span>
+        </div>
+    )
+}
+
+function LoginForm() {
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const reason = searchParams.get('reason')
     const [isLoading, setIsLoading] = useState(false)
     const supabase = createClient()
 
@@ -88,6 +110,7 @@ export default function LoginPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
+                    <LoginAlert reason={reason} />
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                             <FormField
@@ -142,5 +165,13 @@ export default function LoginPage() {
                 </CardContent>
             </Card>
         </div>
+    )
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense>
+            <LoginForm />
+        </Suspense>
     )
 }

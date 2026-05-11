@@ -62,9 +62,18 @@ export async function updateSession(request: NextRequest) {
     if (user) {
         const { data: profile } = await (supabase
             .from('profiles') as any)
-            .select('role')
+            .select('role, is_active')
             .eq('id', user.id)
             .maybeSingle()
+
+        // Check if user is deactivated
+        if (profile && profile.is_active === false) {
+            await supabase.auth.signOut()
+            const url = request.nextUrl.clone()
+            url.pathname = '/login'
+            url.searchParams.set('reason', 'deactivated')
+            return NextResponse.redirect(url)
+        }
 
         const role = profile?.role
         const path = request.nextUrl.pathname

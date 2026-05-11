@@ -10,18 +10,31 @@ export default function AuthConfirmPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const user = session.user
-        const company_id = user.user_metadata?.company_id
-        const role = user.user_metadata?.role ?? 'viewer'
+    async function setupProfile() {
+      // Directly get session — Supabase client automatically
+      // reads the access_token from the URL hash fragment
+      const { data: { session }, error } = await supabase.auth.getSession()
 
-        if (!company_id) {
-          router.push('/login?reason=invite_error')
-          return
-        }
+      if (error || !session?.user) {
+        console.error('No session found:', error)
+        router.push('/login?reason=invite_error')
+        return
+      }
 
-        await (supabase.from('profiles') as any).upsert({
+      const user = session.user
+      const company_id = user.user_metadata?.company_id
+      const role = user.user_metadata?.role ?? 'viewer'
+
+      if (!company_id) {
+        console.error('No company_id in metadata:', user.user_metadata)
+        router.push('/login?reason=invite_error')
+        return
+      }
+
+      // Create profile
+      const { error: profileError } = await (supabase
+        .from('profiles') as any)
+        .upsert({
           id: user.id,
           company_id,
           role,
@@ -29,16 +42,22 @@ export default function AuthConfirmPage() {
           is_active: true,
         })
 
-        await (supabase.from('invitations') as any)
-          .update({ status: 'accepted' })
-          .eq('email', user.email!)
-          .eq('company_id', company_id)
-
-        router.push('/dashboard')
-      } else if (event === 'TOKEN_REFRESHED') {
-        router.push('/dashboard')
+      if (profileError) {
+        console.error('Profile upsert failed:', profileError)
+        router.push('/login?reason=invite_error')
+        return
       }
-    })
+
+      // Mark invitation accepted
+      await (supabase.from('invitations') as any)
+        .update({ status: 'accepted' })
+        .eq('email', user.email!)
+        .eq('company_id', company_id)
+
+      router.push('/dashboard')
+    }
+
+    setupProfile()
   }, [router])
 
   return (

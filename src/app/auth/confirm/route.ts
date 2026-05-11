@@ -9,6 +9,11 @@ export async function GET(request: NextRequest) {
   if (token_hash && type) {
     const supabase = await createClient()
     const { data, error } = await supabase.auth.verifyOtp({ token_hash, type: type as any })
+    console.log('token_hash:', token_hash)
+    console.log('type:', type)
+    console.log('error:', error)
+    console.log('user:', data?.user?.id)
+
 
     if (!error && data.user) {
       const user = data.user

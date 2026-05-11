@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Invite user
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      redirectTo: 'https://finova-sigma.vercel.app/auth/confirm',
+      redirectTo: `${siteUrl}/auth/confirm`,
       data: { company_id: companyId, role }
     })
 

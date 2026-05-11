@@ -15,7 +15,9 @@ export async function updateSession(request: NextRequest) {
                     return request.cookies.getAll()
                 },
                 setAll(cookiesToSet) {
-                    cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+                    cookiesToSet.forEach(({ name, value }) =>
+                        request.cookies.set(name, value)
+                    )
                     supabaseResponse = NextResponse.next({
                         request,
                     })
@@ -27,21 +29,19 @@ export async function updateSession(request: NextRequest) {
         }
     )
 
-    // IMPORTANT: Avoid writing any logic between createServerClient and
-    // supabase.auth.getUser(). A simple mistake can make it very hard to debug
-    // issues with sessions being lost.
-
     const {
         data: { user },
     } = await supabase.auth.getUser()
 
+    const path = request.nextUrl.pathname
+
+    // Allow unauthenticated access to auth-related routes
     if (
         !user &&
-        !request.nextUrl.pathname.startsWith('/login') &&
-        !request.nextUrl.pathname.startsWith('/register') &&
-        !request.nextUrl.pathname.startsWith('/auth')
+        !path.startsWith('/login') &&
+        !path.startsWith('/register') &&
+        !path.startsWith('/auth')
     ) {
-        // no user, potentially respond by redirecting the user to the login page
         const url = request.nextUrl.clone()
         url.pathname = '/login'
         return NextResponse.redirect(url)
@@ -50,15 +50,14 @@ export async function updateSession(request: NextRequest) {
     // Redirect authenticated users away from login/register
     if (
         user &&
-        (request.nextUrl.pathname.startsWith('/login') ||
-            request.nextUrl.pathname.startsWith('/register'))
+        (path.startsWith('/login') || path.startsWith('/register'))
     ) {
         const url = request.nextUrl.clone()
         url.pathname = '/dashboard'
         return NextResponse.redirect(url)
     }
 
-    // Role-based route protection
+    // Role-based and deactivation checks for authenticated users
     if (user) {
         const { data: profile } = await (supabase
             .from('profiles') as any)
@@ -66,7 +65,7 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle()
 
-        // Check if user is deactivated
+        // Deactivated user — sign out and redirect
         if (profile && profile.is_active === false) {
             await supabase.auth.signOut()
             const url = request.nextUrl.clone()
@@ -76,13 +75,14 @@ export async function updateSession(request: NextRequest) {
         }
 
         const role = profile?.role
-        const path = request.nextUrl.pathname
 
+        // Viewer cannot access create/new routes or users settings
         if (role === 'viewer') {
-            const isProtectedAction = 
-                path.endsWith('/new') || 
+            const isProtectedAction =
+                path.endsWith('/new') ||
                 path.includes('/new/') ||
-                (path.startsWith('/settings') && request.nextUrl.searchParams.get('tab') === 'users')
+                (path.startsWith('/settings') &&
+                    request.nextUrl.searchParams.get('tab') === 'users')
 
             if (isProtectedAction) {
                 const url = request.nextUrl.clone()
@@ -92,12 +92,3 @@ export async function updateSession(request: NextRequest) {
                 else if (path.startsWith('/settings')) {
                     url.pathname = '/settings'
                     url.searchParams.set('tab', 'company')
-                } else url.pathname = '/dashboard'
-                
-                return NextResponse.redirect(url)
-            }
-        }
-    }
-
-    return supabaseResponse
-}

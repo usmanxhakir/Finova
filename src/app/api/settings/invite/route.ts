@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
 
     // Invite user
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+      redirectTo: 'https://finova-sigma.vercel.app/auth/confirm',
       data: { company_id: companyId, role }
     })
 

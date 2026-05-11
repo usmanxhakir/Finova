@@ -35,7 +35,6 @@ export async function updateSession(request: NextRequest) {
 
     const path = request.nextUrl.pathname
 
-    // Allow unauthenticated access to auth-related routes
     if (
         !user &&
         !path.startsWith('/login') &&
@@ -47,7 +46,6 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
-    // Redirect authenticated users away from login/register
     if (
         user &&
         (path.startsWith('/login') || path.startsWith('/register'))
@@ -57,7 +55,6 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
-    // Role-based and deactivation checks for authenticated users
     if (user) {
         const { data: profile } = await (supabase
             .from('profiles') as any)
@@ -65,7 +62,6 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle()
 
-        // Deactivated user — sign out and redirect
         if (profile && profile.is_active === false) {
             await supabase.auth.signOut()
             const url = request.nextUrl.clone()
@@ -76,7 +72,6 @@ export async function updateSession(request: NextRequest) {
 
         const role = profile?.role
 
-        // Viewer cannot access create/new routes or users settings
         if (role === 'viewer') {
             const isProtectedAction =
                 path.endsWith('/new') ||
@@ -86,9 +81,22 @@ export async function updateSession(request: NextRequest) {
 
             if (isProtectedAction) {
                 const url = request.nextUrl.clone()
-                if (path.startsWith('/invoices')) url.pathname = '/invoices'
-                else if (path.startsWith('/bills')) url.pathname = '/bills'
-                else if (path.startsWith('/expenses')) url.pathname = '/expenses'
-                else if (path.startsWith('/settings')) {
+                if (path.startsWith('/invoices')) {
+                    url.pathname = '/invoices'
+                } else if (path.startsWith('/bills')) {
+                    url.pathname = '/bills'
+                } else if (path.startsWith('/expenses')) {
+                    url.pathname = '/expenses'
+                } else if (path.startsWith('/settings')) {
                     url.pathname = '/settings'
                     url.searchParams.set('tab', 'company')
+                } else {
+                    url.pathname = '/dashboard'
+                }
+                return NextResponse.redirect(url)
+            }
+        }
+    }
+
+    return supabaseResponse
+}

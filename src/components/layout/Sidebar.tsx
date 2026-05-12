@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
     LayoutDashboard,
@@ -22,6 +22,7 @@ import {
     Plus,
     Sparkles,
     MoreHorizontal,
+    LogOut,
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -30,7 +31,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
 import {
     Tooltip,
     TooltipContent,
@@ -76,10 +78,46 @@ const reportSubItems = [
 // ─── Component ────────────────────────────────────────────────────────────────
 export function Sidebar() {
     const pathname = usePathname();
+    const router = useRouter()
+    const supabase = createClient()
     const [collapsed, setCollapsed] = useState(false);
     const [reportsExpanded, setReportsExpanded] = useState(false);
     const [hasUnreconciled, setHasUnreconciled] = useState(false);
     const [unreconciledCount, setUnreconciledCount] = useState(0);
+
+    const [userName, setUserName] = useState("User Name")
+    const [userRole, setUserRole] = useState("Admin")
+    const [userInitial, setUserInitial] = useState("U")
+
+    useEffect(() => {
+        async function getUserProfile() {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const { data: profile } = await (supabase
+                .from('profiles') as any)
+                .select('full_name, role')
+                .eq('id', user.id)
+                .single()
+            if (profile) {
+                const name = profile.full_name || user.email || 'User'
+                setUserName(name)
+                setUserRole(profile.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1) : 'Viewer')
+                setUserInitial(name.charAt(0).toUpperCase())
+            }
+        }
+        getUserProfile()
+    }, [supabase])
+
+    const handleLogout = async () => {
+        const { error } = await supabase.auth.signOut()
+        if (error) {
+            toast.error("Error signing out")
+        } else {
+            router.push("/login")
+            router.refresh()
+            toast.success("Signed out successfully")
+        }
+    }
 
     useEffect(() => {
         async function checkUnreconciled() {
@@ -145,13 +183,11 @@ export function Sidebar() {
                         className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
                     >
                         {/* Logo icon */}
-                        <div className="w-8 h-8 rounded-lg bg-[#7c3aed] flex items-center justify-center text-white shrink-0">
-                            <img
-                                src="/finova-icon.png"
-                                alt="Fyntrax Logo"
-                                className="h-6 w-6 object-cover rounded"
-                            />
-                        </div>
+                        <img
+                            src="/finova-icon.png"
+                            alt="Fyntrax Logo"
+                            className="h-8 w-8 object-contain rounded-lg shrink-0"
+                        />
                         {!collapsed && (
                             <span className="font-bold text-lg text-gray-900 tracking-tight">
                                 Fyntrax
@@ -508,26 +544,42 @@ export function Sidebar() {
                         <div className="flex items-center justify-center">
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <button className="w-10 h-10 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center hover:bg-violet-200 transition-colors">
-                                        U
+                                    <button
+                                        onClick={handleLogout}
+                                        className="w-10 h-10 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center hover:bg-violet-200 transition-colors"
+                                    >
+                                        {userInitial}
                                     </button>
                                 </TooltipTrigger>
                                 <TooltipContent side="right" sideOffset={8}>
-                                    <p>User Name — Admin · Click for menu</p>
+                                    <p>{userName} — {userRole}</p>
                                 </TooltipContent>
                             </Tooltip>
                         </div>
                     ) : (
-                        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group">
-                            <div className="w-9 h-9 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center shrink-0">
-                                U
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-900 truncate">User Name</p>
-                                <p className="text-xs text-gray-400 truncate">Admin</p>
-                            </div>
-                            <MoreHorizontal size={16} className="text-gray-400 group-hover:text-gray-600 shrink-0" />
-                        </button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left group">
+                                    <div className="w-9 h-9 rounded-full bg-violet-100 text-[#6d28d9] font-semibold text-sm flex items-center justify-center shrink-0">
+                                        {userInitial}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
+                                        <p className="text-xs text-gray-400 truncate">{userRole}</p>
+                                    </div>
+                                    <MoreHorizontal size={16} className="text-gray-400 group-hover:text-gray-600 shrink-0" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent side="top" align="start" className="w-48 mb-1">
+                                <DropdownMenuItem
+                                    onClick={handleLogout}
+                                    className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                                >
+                                    <LogOut className="mr-2 h-4 w-4" />
+                                    Sign out
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                 </div>
             </aside>

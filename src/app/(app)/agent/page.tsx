@@ -272,6 +272,7 @@ export default function AgentPage() {
   const [phase, setPhase] = useState<'input' | 'review' | 'done'>('input')
   const [unresolvedEntities, setUnresolvedEntities] = useState<UnresolvedEntity[]>([])
   const [pendingParseResult, setPendingParseResult] = useState<ParseResponse | null>(null)
+  const [answerText, setAnswerText] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Beta modal on first visit
@@ -418,6 +419,18 @@ export default function AgentPage() {
         return
       }
 
+      // Extract answers from ANSWER_QUESTION / UNKNOWN intents
+      const answerIntents = data.intents.filter(i =>
+        ['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
+      )
+      if (answerIntents.length > 0) {
+        const answers = answerIntents
+          .map(i => i.data?.answer)
+          .filter(Boolean)
+          .join('\n\n')
+        if (answers) setAnswerText(answers)
+      }
+
       const validIntents = (data.intents as ResolvedIntent[] || []).filter(i => 
         !['ANSWER_QUESTION', 'UNKNOWN'].includes(i.intent)
       )
@@ -508,6 +521,7 @@ export default function AgentPage() {
     setResults(null)
     setClarification(null)
     setInput('')
+    setAnswerText(null)
     setPhase('input')
     setTimeout(() => textareaRef.current?.focus(), 50)
   }
@@ -599,7 +613,7 @@ export default function AgentPage() {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => { setInput(e.target.value); if (answerText) setAnswerText(null) }}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit() }}
             placeholder='"Bill from AWS $340 for cloud hosting due in 30 days and paid $45 lunch from checking today"'
             className="w-full border border-[#e5e7eb] rounded-xl p-3.5 text-sm text-[#111118] resize-none focus:outline-none focus:border-[#7c3aed] min-h-[100px]"
@@ -611,6 +625,30 @@ export default function AgentPage() {
             <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
               <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
               <p className="text-sm text-amber-800">{clarification}</p>
+            </div>
+          )}
+
+          {answerText && (
+            <div className="mt-3 bg-[#f0fdf4] border border-[#bbf7d0] rounded-xl p-4">
+              <div className="flex items-start gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-[#7c3aed] flex items-center justify-center shrink-0 mt-0.5">
+                  <Sparkles size={12} className="text-white" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-[#6b7280] uppercase tracking-wide mb-1">
+                    Agent
+                  </div>
+                  <p className="text-sm text-[#111118] whitespace-pre-wrap leading-relaxed">
+                    {answerText}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAnswerText(null)}
+                className="mt-3 text-[11px] text-[#9ca3af] hover:text-[#6b7280]"
+              >
+                ✕ Dismiss
+              </button>
             </div>
           )}
 

@@ -78,5 +78,5 @@ export async function GET(request: NextRequest) {
     .eq('email', user.email!)
     .eq('company_id', company_id)
 
-  return NextResponse.redirect(new URL(redirectTo, request.url))
+  return NextResponse.redirect(new URL('/auth/setup', request.url))
 }

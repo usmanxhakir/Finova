@@ -15,34 +15,200 @@ export interface AgentContext {
     type: string
     default_rate: number  // stored as BIGINT cents in DB
   }>
+  financials: {
+    outstanding_bills: Array<{
+      id: string
+      vendor: string
+      amount_due: number
+      due_date: string
+      status: string
+      line_items: Array<{ item_name: string; amount: number }>
+    }>
+    outstanding_invoices: Array<{
+      id: string
+      customer: string
+      amount_due: number
+      due_date: string
+      status: string
+      line_items: Array<{ item_name: string; amount: number }>
+    }>
+    all_bills_this_month: Array<{
+      vendor: string
+      line_items: Array<{ item_name: string; account: string; amount: number }>
+    }>
+    all_bills_last_month: Array<{
+      vendor: string
+      line_items: Array<{ item_name: string; account: string; amount: number }>
+    }>
+    expenses_this_month: Array<{ account: string; total: number }>
+    expenses_last_month: Array<{ account: string; total: number }>
+  }
 }
 
 export async function loadAgentContext(): Promise<AgentContext> {
   const supabase = await createClient()
 
-  const [contactsRes, accountsRes, itemsRes] = await Promise.all([
-    supabase
-      .from('contacts')
-      .select('id, name, type')
-      .eq('is_active', true)
-      .order('name'),
-    supabase
-      .from('accounts')
-      .select('id, name, code, type, sub_type')
-      .eq('is_active', true)
-      .order('code'),
-    supabase
-      .from('items')
-      .select('id, name, type, default_rate')
-      .eq('is_active', true)
-      .order('name'),
+  const now = new Date()
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString().split('T')[0]
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    .toISOString().split('T')[0]
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+    .toISOString().split('T')[0]
+
+  const [
+    contactsRes,
+    accountsRes,
+    itemsRes,
+    outstandingBillsRes,
+    outstandingInvoicesRes,
+    billsThisMonthRes,
+    billsLastMonthRes,
+    expensesThisRes,
+    expensesLastRes,
+  ] = await Promise.all([
+    supabase.from('contacts').select('id, name, type').eq('is_active', true).order('name'),
+    supabase.from('accounts').select('id, name, code, type, sub_type').eq('is_active', true).order('code'),
+    supabase.from('items').select('id, name, type, default_rate').eq('is_active', true).order('name'),
+
+    // Outstanding bills with line items
+    (supabase as any)
+      .from('bills')
+      .select(`
+        id,
+        amount_due,
+        due_date,
+        status,
+        contacts(name),
+        bill_line_items(amount, items(name), accounts(name))
+      `)
+      .not('status', 'in', '("paid","void")')
+      .gt('amount_due', 0)
+      .order('due_date', { ascending: true })
+      .limit(30),
+
+    // Outstanding invoices with line items
+    (supabase as any)
+      .from('invoices')
+      .select(`
+        id,
+        amount_due,
+        due_date,
+        status,
+        contacts(name),
+        invoice_line_items(amount, items(name), accounts(name))
+      `)
+      .not('status', 'in', '("paid","void")')
+      .gt('amount_due', 0)
+      .order('due_date', { ascending: true })
+      .limit(30),
+
+    // Bills this month (for spending analysis)
+    (supabase as any)
+      .from('bills')
+      .select(`
+        contacts(name),
+        bill_line_items(amount, items(name), accounts(name))
+      `)
+      .gte('issue_date', thisMonthStart)
+      .not('status', 'eq', 'void')
+      .limit(50),
+
+    // Bills last month
+    (supabase as any)
+      .from('bills')
+      .select(`
+        contacts(name),
+        bill_line_items(amount, items(name), accounts(name))
+      `)
+      .gte('issue_date', lastMonthStart)
+      .lte('issue_date', lastMonthEnd)
+      .not('status', 'eq', 'void')
+      .limit(50),
+
+    // Expenses this month
+    (supabase as any)
+      .from('expenses')
+      .select('amount, accounts!expense_account_id(name)')
+      .gte('date', thisMonthStart)
+      .not('status', 'eq', 'void'),
+
+    // Expenses last month
+    (supabase as any)
+      .from('expenses')
+      .select('amount, accounts!expense_account_id(name)')
+      .gte('date', lastMonthStart)
+      .lte('date', lastMonthEnd)
+      .not('status', 'eq', 'void'),
   ])
+
+  // Process outstanding bills
+  const outstandingBills = (outstandingBillsRes.data ?? []).map((b: any) => ({
+    id: b.id,
+    vendor: b.contacts?.name ?? 'Unknown',
+    amount_due: b.amount_due,
+    due_date: b.due_date,
+    status: b.status,
+    line_items: (b.bill_line_items ?? []).map((li: any) => ({
+      item_name: li.items?.name ?? li.accounts?.name ?? 'Unknown',
+      amount: li.amount,
+    })),
+  }))
+
+  // Process outstanding invoices
+  const outstandingInvoices = (outstandingInvoicesRes.data ?? []).map((i: any) => ({
+    id: i.id,
+    customer: i.contacts?.name ?? 'Unknown',
+    amount_due: i.amount_due,
+    due_date: i.due_date,
+    status: i.status,
+    line_items: (i.invoice_line_items ?? []).map((li: any) => ({
+      item_name: li.items?.name ?? li.accounts?.name ?? 'Unknown',
+      amount: li.amount,
+    })),
+  }))
+
+  // Process bills this/last month
+  const allBillsThisMonth = (billsThisMonthRes.data ?? []).map((b: any) => ({
+    vendor: b.contacts?.name ?? 'Unknown',
+    line_items: (b.bill_line_items ?? []).map((li: any) => ({
+      item_name: li.items?.name ?? 'Unknown',
+      account: li.accounts?.name ?? 'Unknown',
+      amount: li.amount,
+    })),
+  }))
+
+  const allBillsLastMonth = (billsLastMonthRes.data ?? []).map((b: any) => ({
+    vendor: b.contacts?.name ?? 'Unknown',
+    line_items: (b.bill_line_items ?? []).map((li: any) => ({
+      item_name: li.items?.name ?? 'Unknown',
+      account: li.accounts?.name ?? 'Unknown',
+      amount: li.amount,
+    })),
+  }))
 
   return {
     contacts: contactsRes.data ?? [],
     accounts: accountsRes.data ?? [],
     items: itemsRes.data ?? [],
+    financials: {
+      outstanding_bills: outstandingBills,
+      outstanding_invoices: outstandingInvoices,
+      all_bills_this_month: allBillsThisMonth,
+      all_bills_last_month: allBillsLastMonth,
+      expenses_this_month: aggregateExpensesByAccount(expensesThisRes.data ?? []),
+      expenses_last_month: aggregateExpensesByAccount(expensesLastRes.data ?? []),
+    },
   }
+}
+
+function aggregateExpensesByAccount(rows: any[]): Array<{ account: string; total: number }> {
+  const map = new Map<string, number>()
+  for (const row of rows) {
+    const name = row.accounts?.name ?? 'Unknown'
+    map.set(name, (map.get(name) ?? 0) + (row.amount ?? 0))
+  }
+  return Array.from(map.entries()).map(([account, total]) => ({ account, total }))
 }
 
 export function buildSystemPrompt(context: AgentContext): string {
@@ -143,5 +309,38 @@ AVAILABLE ITEMS (use item_name from this list for bills/invoices):
 ${JSON.stringify(context.items)}
 
 AVAILABLE ACCOUNTS (use account names for expenses only):
-${JSON.stringify(context.accounts)}`
+${JSON.stringify(context.accounts)}
+
+═══════════════════════════════════════
+FINANCIAL DATA — USE TO ANSWER QUESTIONS
+═══════════════════════════════════════
+
+When answering questions about the business finances, use the data below.
+All amounts are in CENTS. Divide by 100 to get dollars when answering.
+
+OUTSTANDING BILLS (money we owe vendors):
+${JSON.stringify(context.financials.outstanding_bills)}
+
+OUTSTANDING INVOICES (money customers owe us):
+${JSON.stringify(context.financials.outstanding_invoices)}
+
+BILLS THIS MONTH (includes item-level breakdown for spending questions):
+${JSON.stringify(context.financials.all_bills_this_month)}
+
+BILLS LAST MONTH:
+${JSON.stringify(context.financials.all_bills_last_month)}
+
+DIRECT EXPENSES THIS MONTH by account:
+${JSON.stringify(context.financials.expenses_this_month)}
+
+DIRECT EXPENSES LAST MONTH by account:
+${JSON.stringify(context.financials.expenses_last_month)}
+
+ANSWERING SPENDING QUESTIONS:
+- "How much did we spend on hosting?" → search all_bills_this_month line_items where item_name contains "hosting", sum amounts. Also check direct expenses.
+- "How much do we owe [vendor]?" → filter outstanding_bills by vendor name, sum amount_due
+- "What does [customer] owe me?" → filter outstanding_invoices by customer name, sum amount_due
+- "Are any bills overdue?" → compare outstanding_bills due_date to today (${today})
+- Always divide cents by 100 when presenting amounts to the user.
+`
 }

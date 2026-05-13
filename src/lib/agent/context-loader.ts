@@ -13,35 +13,40 @@ export interface AgentContext {
     id: string
     name: string
     type: string
-    default_rate: number  // stored as BIGINT cents in DB
+    default_rate: number  // in DOLLARS
   }>
   financials: {
     outstanding_bills: Array<{
       id: string
       vendor: string
-      amount_due: number
+      amount_due: number // in DOLLARS
       due_date: string
       status: string
-      line_items: Array<{ item_name: string; amount: number }>
+      line_items: Array<{ item_name: string; amount: number }> // amount in DOLLARS
     }>
     outstanding_invoices: Array<{
       id: string
       customer: string
-      amount_due: number
+      amount_due: number // in DOLLARS
       due_date: string
       status: string
-      line_items: Array<{ item_name: string; amount: number }>
+      line_items: Array<{ item_name: string; amount: number }> // amount in DOLLARS
     }>
     all_bills_this_month: Array<{
       vendor: string
-      line_items: Array<{ item_name: string; account: string; amount: number }>
+      line_items: Array<{ item_name: string; account: string; amount: number }> // amount in DOLLARS
     }>
     all_bills_last_month: Array<{
       vendor: string
-      line_items: Array<{ item_name: string; account: string; amount: number }>
+      line_items: Array<{ item_name: string; account: string; amount: number }> // amount in DOLLARS
     }>
-    expenses_this_month: Array<{ account: string; total: number }>
-    expenses_last_month: Array<{ account: string; total: number }>
+    expenses_this_month: Array<{ account: string; total: number }> // in DOLLARS
+    expenses_last_month: Array<{ account: string; total: number }> // in DOLLARS
+    pl: {
+      this_month: { revenue: number; cogs: number; expenses: number; grossProfit: number; netIncome: number }
+      last_month: { revenue: number; cogs: number; expenses: number; grossProfit: number; netIncome: number }
+      ytd:        { revenue: number; cogs: number; expenses: number; grossProfit: number; netIncome: number }
+    }
   }
 }
 
@@ -49,12 +54,14 @@ export async function loadAgentContext(): Promise<AgentContext> {
   const supabase = await createClient()
 
   const now = new Date()
+  const todayStr = now.toISOString().split('T')[0]
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString().split('T')[0]
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     .toISOString().split('T')[0]
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
     .toISOString().split('T')[0]
+  const ytdStart = new Date(now.getFullYear(), 0, 1).toISOString().split('T')[0]
 
   const [
     contactsRes,
@@ -66,6 +73,9 @@ export async function loadAgentContext(): Promise<AgentContext> {
     billsLastMonthRes,
     expensesThisRes,
     expensesLastRes,
+    jeThisMonthRes,
+    jeLastMonthRes,
+    jeYtdRes,
   ] = await Promise.all([
     supabase.from('contacts').select('id, name, type').eq('is_active', true).order('name'),
     supabase.from('accounts').select('id, name, code, type, sub_type').eq('is_active', true).order('code'),
@@ -140,18 +150,50 @@ export async function loadAgentContext(): Promise<AgentContext> {
       .gte('date', lastMonthStart)
       .lte('date', lastMonthEnd)
       .not('status', 'eq', 'void'),
+
+    // Journal entry IDs for this month (non-void system entries)
+    supabase
+      .from('journal_entries')
+      .select('id')
+      .gte('date', thisMonthStart)
+      .lte('date', todayStr),
+
+    // Journal entry IDs for last month
+    supabase
+      .from('journal_entries')
+      .select('id')
+      .gte('date', lastMonthStart)
+      .lte('date', lastMonthEnd),
+
+    // Journal entry IDs for YTD
+    supabase
+      .from('journal_entries')
+      .select('id')
+      .gte('date', ytdStart)
+      .lte('date', todayStr),
+  ])
+
+  // Process P&L
+  const jeThisIds = (jeThisMonthRes.data ?? []).map((r: any) => r.id)
+  const jeLastIds = (jeLastMonthRes.data ?? []).map((r: any) => r.id)
+  const jeYtdIds  = (jeYtdRes.data ?? []).map((r: any) => r.id)
+
+  const [plThisMonth, plLastMonth, plYtd] = await Promise.all([
+    computePL(supabase, jeThisIds),
+    computePL(supabase, jeLastIds),
+    computePL(supabase, jeYtdIds),
   ])
 
   // Process outstanding bills
   const outstandingBills = (outstandingBillsRes.data ?? []).map((b: any) => ({
     id: b.id,
     vendor: b.contacts?.name ?? 'Unknown',
-    amount_due: b.amount_due,
+    amount_due: b.amount_due / 100,
     due_date: b.due_date,
     status: b.status,
     line_items: (b.bill_line_items ?? []).map((li: any) => ({
       item_name: li.items?.name ?? li.accounts?.name ?? 'Unknown',
-      amount: li.amount,
+      amount: li.amount / 100,
     })),
   }))
 
@@ -159,12 +201,12 @@ export async function loadAgentContext(): Promise<AgentContext> {
   const outstandingInvoices = (outstandingInvoicesRes.data ?? []).map((i: any) => ({
     id: i.id,
     customer: i.contacts?.name ?? 'Unknown',
-    amount_due: i.amount_due,
+    amount_due: i.amount_due / 100,
     due_date: i.due_date,
     status: i.status,
     line_items: (i.invoice_line_items ?? []).map((li: any) => ({
       item_name: li.items?.name ?? li.accounts?.name ?? 'Unknown',
-      amount: li.amount,
+      amount: li.amount / 100,
     })),
   }))
 
@@ -174,7 +216,7 @@ export async function loadAgentContext(): Promise<AgentContext> {
     line_items: (b.bill_line_items ?? []).map((li: any) => ({
       item_name: li.items?.name ?? 'Unknown',
       account: li.accounts?.name ?? 'Unknown',
-      amount: li.amount,
+      amount: li.amount / 100,
     })),
   }))
 
@@ -183,14 +225,17 @@ export async function loadAgentContext(): Promise<AgentContext> {
     line_items: (b.bill_line_items ?? []).map((li: any) => ({
       item_name: li.items?.name ?? 'Unknown',
       account: li.accounts?.name ?? 'Unknown',
-      amount: li.amount,
+      amount: li.amount / 100,
     })),
   }))
 
   return {
     contacts: contactsRes.data ?? [],
     accounts: accountsRes.data ?? [],
-    items: itemsRes.data ?? [],
+    items: (itemsRes.data ?? []).map((it: any) => ({
+      ...it,
+      default_rate: it.default_rate / 100
+    })),
     financials: {
       outstanding_bills: outstandingBills,
       outstanding_invoices: outstandingInvoices,
@@ -198,7 +243,57 @@ export async function loadAgentContext(): Promise<AgentContext> {
       all_bills_last_month: allBillsLastMonth,
       expenses_this_month: aggregateExpensesByAccount(expensesThisRes.data ?? []),
       expenses_last_month: aggregateExpensesByAccount(expensesLastRes.data ?? []),
+      pl: {
+        this_month: plThisMonth,
+        last_month: plLastMonth,
+        ytd: plYtd,
+      },
     },
+  }
+}
+
+async function computePL(
+  supabase: any,
+  journalEntryIds: string[]
+): Promise<{ revenue: number; cogs: number; expenses: number; grossProfit: number; netIncome: number }> {
+  if (journalEntryIds.length === 0) {
+    return { revenue: 0, cogs: 0, expenses: 0, grossProfit: 0, netIncome: 0 }
+  }
+
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('debit, credit, accounts(type, sub_type)')
+    .in('journal_entry_id', journalEntryIds)
+
+  let revenue = 0
+  let cogs = 0
+  let expenses = 0
+
+  for (const line of lines ?? []) {
+    const type = line.accounts?.type
+    const subType = line.accounts?.sub_type
+
+    if (type === 'revenue') {
+      revenue += (line.credit ?? 0) - (line.debit ?? 0)
+    } else if (subType === 'cost_of_goods_sold') {
+      cogs += (line.debit ?? 0) - (line.credit ?? 0)
+    } else if (type === 'expense') {
+      expenses += (line.debit ?? 0) - (line.credit ?? 0)
+    }
+  }
+
+  const rev = revenue / 100
+  const cos = cogs / 100
+  const exp = expenses / 100
+  const gp = rev - cos
+  const ni = rev - cos - exp
+
+  return {
+    revenue: Number(rev.toFixed(2)),
+    cogs: Number(cos.toFixed(2)),
+    expenses: Number(exp.toFixed(2)),
+    grossProfit: Number(gp.toFixed(2)),
+    netIncome: Number(ni.toFixed(2)),
   }
 }
 
@@ -208,7 +303,10 @@ function aggregateExpensesByAccount(rows: any[]): Array<{ account: string; total
     const name = row.accounts?.name ?? 'Unknown'
     map.set(name, (map.get(name) ?? 0) + (row.amount ?? 0))
   }
-  return Array.from(map.entries()).map(([account, total]) => ({ account, total }))
+  return Array.from(map.entries()).map(([account, total]) => ({ 
+    account, 
+    total: Math.round((total / 100) * 100) / 100 
+  }))
 }
 
 export function buildSystemPrompt(context: AgentContext): string {
@@ -316,7 +414,7 @@ FINANCIAL DATA — USE TO ANSWER QUESTIONS
 ═══════════════════════════════════════
 
 When answering questions about the business finances, use the data below.
-All amounts are in CENTS. Divide by 100 to get dollars when answering.
+All amounts are already in DOLLARS (pre-converted). Do not divide by 100. Display as-is with $ formatting.
 
 OUTSTANDING BILLS (money we owe vendors):
 ${JSON.stringify(context.financials.outstanding_bills)}
@@ -336,11 +434,21 @@ ${JSON.stringify(context.financials.expenses_this_month)}
 DIRECT EXPENSES LAST MONTH by account:
 ${JSON.stringify(context.financials.expenses_last_month)}
 
+P&L SUMMARY (all amounts in dollars, pre-computed):
+${JSON.stringify(context.financials.pl, null, 2)}
+
+ANSWERING P&L QUESTIONS:
+- "What is my revenue this month?" → use pl.this_month.revenue
+- "What was last month's revenue?" → use pl.last_month.revenue
+- "What is my gross profit margin this month?" → (pl.this_month.grossProfit / pl.this_month.revenue * 100).toFixed(1) + "%"
+- "What is my net income YTD?" → use pl.ytd.netIncome
+- "How do revenue compare to last month?" → compare pl.this_month.revenue vs pl.last_month.revenue
+- If revenue is 0 for a period, say "No revenue recorded for that period" rather than calculating a margin
+
 ANSWERING SPENDING QUESTIONS:
 - "How much did we spend on hosting?" → search all_bills_this_month line_items where item_name contains "hosting", sum amounts. Also check direct expenses.
 - "How much do we owe [vendor]?" → filter outstanding_bills by vendor name, sum amount_due
 - "What does [customer] owe me?" → filter outstanding_invoices by customer name, sum amount_due
 - "Are any bills overdue?" → compare outstanding_bills due_date to today (${today})
-- Always divide cents by 100 when presenting amounts to the user.
 `
 }

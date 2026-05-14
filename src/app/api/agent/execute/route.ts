@@ -68,6 +68,7 @@ export async function POST(request: Request) {
             const quantity = li.quantity ?? 1
             const rate = li.rate ?? 0
             return {
+              item_id: li.item_id ?? null,
               description: li.description ?? '',
               quantity,
               rate,
@@ -117,6 +118,7 @@ export async function POST(request: Request) {
             const quantity = li.quantity ?? 1
             const rate = li.rate ?? 0
             return {
+              item_id: li.item_id ?? null,
               description: li.description ?? '',
               quantity,
               rate,

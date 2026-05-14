@@ -14,6 +14,8 @@ export interface AgentContext {
     name: string
     type: string
     default_rate: number  // in DOLLARS
+    income_account_id: string | null
+    expense_account_id: string | null
   }>
   financials: {
     outstanding_bills: Array<{
@@ -79,7 +81,7 @@ export async function loadAgentContext(): Promise<AgentContext> {
   ] = await Promise.all([
     supabase.from('contacts').select('id, name, type').eq('is_active', true).order('name'),
     supabase.from('accounts').select('id, name, code, type, sub_type').eq('is_active', true).order('code'),
-    supabase.from('items').select('id, name, type, default_rate').eq('is_active', true).order('name'),
+    supabase.from('items').select('id, name, type, default_rate, income_account_id, expense_account_id').eq('is_active', true).order('name'),
 
     // Outstanding bills with line items
     (supabase as any)

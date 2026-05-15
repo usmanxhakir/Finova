@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Sparkles, ArrowRight, Loader2, Trash2, AlertTriangle, CheckCircle2, X } from 'lucide-react'
-import type { ParseResponse, UnresolvedEntity, ResolvedIntent } from '@/types/agent'
+import type { ParseResponse, UnresolvedEntity, ResolvedIntent, ResolvedLineItem } from '@/types/agent'
 
 function UnresolvedMessage({
   entities,
@@ -111,6 +111,8 @@ interface AgentEntry {
   contact_id: string
   account_name: string
   account_id: string
+  item_id: string              // for BILL/INVOICE only — the item UUID
+  item_name: string            // for BILL/INVOICE only — the item display name
   payment_account_id: string   // for EXPENSE only
   payment_account_name: string
   amount: number               // BIGINT cents
@@ -125,6 +127,12 @@ interface AccountOption {
   name: string
   type: string
   sub_type: string
+}
+
+interface ItemOption {
+  id: string
+  name: string
+  type: string
 }
 
 interface ContactOption {
@@ -263,6 +271,7 @@ export default function AgentPage() {
   const [showBeta, setShowBeta] = useState<boolean>(false)
   const [accounts, setAccounts] = useState<AccountOption[]>([])
   const [contacts, setContacts] = useState<ContactOption[]>([])
+  const [items, setItems] = useState<ItemOption[]>([])
   const [input, setInput] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [isExecuting, setIsExecuting] = useState<boolean>(false)
@@ -297,8 +306,15 @@ export default function AgentPage() {
         .select('id, name, type')
         .eq('is_active', true) as unknown as { data: ContactOption[] | null }
 
+      // eslint-disable-next-line
+      const { data: itms } = await (supabase as any)
+        .from('items')
+        .select('id, name, type')
+        .eq('is_active', true) as unknown as { data: ItemOption[] | null }
+
       if (accs) setAccounts(accs)
       if (cons) setContacts(cons)
+      if (itms) setItems(itms)
     }
     load()
   // eslint-disable-next-line
@@ -317,8 +333,10 @@ export default function AgentPage() {
         description: line?.description ?? intent.data.description ?? '',
         contact_name: intent.resolved?.contact_id ? (intent.data.vendor_name ?? '') : '',
         contact_id: intent.resolved?.contact_id ?? '',
-        account_name: line?.item_name ?? line?.account_name ?? '',
-        account_id: line?.item_id ?? '',
+        account_name: '',
+        account_id: (line as ResolvedLineItem)?.account_id ?? '',
+        item_id: line?.item_id ?? '',
+        item_name: line?.item_name ?? '',
         payment_account_id: '',
         payment_account_name: '',
         amount: line?.rate ?? intent.data.amount ?? 0,
@@ -334,8 +352,10 @@ export default function AgentPage() {
         description: line?.description ?? intent.data.description ?? '',
         contact_name: intent.resolved?.contact_id ? (intent.data.contact_name ?? '') : '',
         contact_id: intent.resolved?.contact_id ?? '',
-        account_name: line?.item_name ?? line?.account_name ?? '',
-        account_id: line?.item_id ?? '',
+        account_name: '',
+        account_id: (line as ResolvedLineItem)?.account_id ?? '',
+        item_id: line?.item_id ?? '',
+        item_name: line?.item_name ?? '',
         payment_account_id: '',
         payment_account_name: '',
         amount: line?.rate ?? intent.data.amount ?? 0,
@@ -352,6 +372,8 @@ export default function AgentPage() {
         contact_id: '',
         account_name: intent.data.expense_account_name ?? '',
         account_id: intent.resolved?.account_id ?? '',
+        item_id: '',
+        item_name: '',
         payment_account_id: intent.resolved?.payment_account_id ?? '',
         payment_account_name: intent.data.payment_account_name ?? '',
         amount: intent.data.amount ?? 0,
@@ -491,6 +513,7 @@ export default function AgentPage() {
         expense_account_id: e.account_id || null,
         payment_account_id: e.payment_account_id || null,
         line_items: e.type !== 'EXPENSE' ? [{ 
+          item_id: e.item_id || null,
           description: e.description, 
           quantity: 1, 
           rate: e.amount, 
@@ -711,7 +734,7 @@ export default function AgentPage() {
                   <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] w-20">Type</th>
                   <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[150px]">Description</th>
                   <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[140px]">Contact</th>
-                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[160px]">Account</th>
+                  <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[160px]">Item / Account</th>
                   {entries.some(e => e.type === 'EXPENSE') && (
                     <th className="py-2.5 px-3 text-[10px] tracking-widest font-semibold uppercase text-[#9ca3af] min-w-[140px]">Paid From</th>
                   )}
@@ -775,21 +798,39 @@ export default function AgentPage() {
                       </td>
 
                       <td className="px-3 py-2">
-                        <select
-                          value={entry.account_id}
-                          onChange={e => {
-                            const a = accounts.find(x => x.id === e.target.value)
-                            updateEntry(idx, { account_id: e.target.value, account_name: a?.name ?? '' })
-                          }}
-                          className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
-                        >
-                          <option value="">
-                            {entry.account_name || 'Select account…'}
-                          </option>
-                          {accountPool.map(a => (
-                            <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                          ))}
-                        </select>
+                        {entry.type === 'BILL' || entry.type === 'INVOICE' ? (
+                          <select
+                            value={entry.item_id}
+                            onChange={e => {
+                              const i = items.find(x => x.id === e.target.value)
+                              updateEntry(idx, { item_id: e.target.value, item_name: i?.name ?? '' })
+                            }}
+                            className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
+                          >
+                            <option value="">
+                              {entry.item_name || 'Select item…'}
+                            </option>
+                            {items.map(i => (
+                              <option key={i.id} value={i.id}>{i.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <select
+                            value={entry.account_id}
+                            onChange={e => {
+                              const a = accounts.find(x => x.id === e.target.value)
+                              updateEntry(idx, { account_id: e.target.value, account_name: a?.name ?? '' })
+                            }}
+                            className="w-full border border-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#7c3aed] bg-transparent hover:bg-[#f9fafb] focus:bg-white cursor-pointer text-[13px]"
+                          >
+                            <option value="">
+                              {entry.account_name || 'Select account…'}
+                            </option>
+                            {accountPool.map(a => (
+                              <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
 
                       {entries.some(e => e.type === 'EXPENSE') && (

@@ -354,6 +354,15 @@ For CREATE_BILL and CREATE_INVOICE, line items must reference items from the AVA
 - If no item matches, set item_name to a descriptive name anyway — the resolver will flag it
 - Do NOT reference accounts for bill/invoice line items — accounts are handled automatically via the item
 
+Intent-level data for CREATE_BILL and CREATE_INVOICE:
+{
+  "vendor_name": "Vendor name (for bills) or contact_name: Customer name (for invoices)",
+  "date": "YYYY-MM-DD",     ← REQUIRED: transaction date extracted from message
+  "due_days": 30,           ← days until due, default 30
+  "notes": "",
+  "line_items": [ ...see shape below ]
+}
+
 Line item shape for bills/invoices:
 {
   "item_name": "Cloud Hosting",   ← match to items list
@@ -395,6 +404,9 @@ MONETARY RULES — NEVER BREAK
 DATE RULES:
 - Today is ${today}
 - due_days defaults to 30 for bills/invoices if not specified
+- ALL intents (CREATE_BILL, CREATE_INVOICE, CREATE_EXPENSE) MUST include a "date" field in their data object as YYYY-MM-DD
+- Extract the date from context. If the user's message already contains an ISO date (pre-processed from "yesterday", "last week" etc), use that exact date
+- Default to today (${today}) ONLY if no date is mentioned at all
 
 OTHER RULES:
 - A single message can contain MULTIPLE intents — extract ALL of them
@@ -406,7 +418,11 @@ AVAILABLE CONTACTS:
 ${JSON.stringify(context.contacts)}
 
 AVAILABLE ITEMS (use item_name from this list for bills/invoices):
-${JSON.stringify(context.items)}
+${JSON.stringify(context.items.map(i => ({
+  name: i.name,
+  type: i.type,
+  default_rate_cents: Math.round(i.default_rate * 100),
+})))}
 
 AVAILABLE ACCOUNTS (use account names for expenses only):
 ${JSON.stringify(context.accounts)}

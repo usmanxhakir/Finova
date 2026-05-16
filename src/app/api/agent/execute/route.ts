@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { ResolvedIntent, ExecuteResult } from '@/types/agent'
+import { createBillRecord, createInvoiceRecord, createExpenseRecord } from '@/lib/agent/actions'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -7,8 +8,18 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { intents } = (await request.json()) as { intents: ResolvedIntent[] }
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  const cookieHeader = request.headers.get('cookie') ?? ''
+
+  const { data: profile } = await (supabase as any)
+    .from('profiles')
+    .select('company_id')
+    .eq('id', user.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (!profile?.company_id) {
+    return Response.json({ error: 'Company not found' }, { status: 404 })
+  }
+  const companyId = profile.company_id
 
   const reportUrls: Record<string, string> = {
     pl: '/reports/pl',
@@ -23,189 +34,220 @@ export async function POST(request: Request) {
 
       switch (intent.intent) {
         case 'CREATE_EXPENSE': {
-          const expenseAccountId = intent.resolved.expense_account_id 
-            ?? intent.resolved.account_id 
-            ?? (intent.data as Record<string, unknown>)?.account_id 
-            ?? null
+          try {
+            const expenseAccountId = (intent.resolved.expense_account_id 
+              ?? intent.resolved.account_id 
+              ?? (intent.data as any)?.account_id 
+              ?? null) as string | null
 
-          if (!expenseAccountId) {
-            return {
-              intent: intent.intent,
-              success: false,
-              error: 'No expense account selected. Please pick an account in the review table.',
+            if (!expenseAccountId) {
+              return {
+                intent: intent.intent,
+                success: false,
+                error: 'No expense account selected. Please pick an account in the review table.',
+              }
             }
-          }
 
-          const res = await fetch(`${baseUrl}/api/expenses`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              cookie: cookieHeader,
-            },
-            body: JSON.stringify({
+            if (!intent.resolved.payment_account_id) {
+              return {
+                intent: intent.intent,
+                success: false,
+                error: 'No payment account selected.',
+              }
+            }
+
+            const data = await createExpenseRecord(supabase, companyId, {
               date: intent.data.date ?? today,
               payee: intent.data.payee ?? 'Unknown',
               description: intent.data.description ?? '',
-              amount: intent.data.amount,            // already cents
-              account_id: expenseAccountId,          // expenses API reads this as account_id
+              amount: intent.data.amount ?? 0,
+              account_id: expenseAccountId,
               payment_account_id: intent.resolved.payment_account_id,
-            }),
-          })
-          const data = await res.json()
-          return {
-            intent: intent.intent,
-            success: res.ok,
-            record_id: data?.id,
-            error: res.ok ? undefined : data?.error ?? 'Failed to create expense',
+              notes: intent.data.notes,
+            })
+
+            return { 
+              intent: intent.intent, 
+              success: true, 
+              record_id: data.id 
+            }
+          } catch (err: any) {
+            return { 
+              intent: intent.intent, 
+              success: false, 
+              error: err.message 
+            }
           }
         }
 
         case 'CREATE_INVOICE': {
-          const dueDate = new Date(
-            Date.now() + (intent.data.due_days ?? 30) * 86400000
-          ).toISOString().split('T')[0]
-          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
-            const quantity = li.quantity ?? 1
-            const rate = li.rate ?? 0
-            return {
-              item_id: li.item_id ?? null,
-              description: li.description ?? '',
-              quantity,
-              rate,
-              amount: Math.round(quantity * rate),   // cents, integer, no floats
-              account_id: li.account_id ?? null,
-            }
-          })
+          try {
+            const dueDate = new Date(
+              Date.now() + (intent.data.due_days ?? 30) * 86400000
+            ).toISOString().split('T')[0]
+            const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
+              const quantity = li.quantity ?? 1
+              const rate = li.rate ?? 0
+              return {
+                item_id: li.item_id ?? null,
+                description: li.description ?? '',
+                quantity,
+                rate,
+                amount: Math.round(quantity * rate),
+                account_id: li.account_id ?? null,
+              }
+            })
 
-          if (lineItems.length === 0) {
-            return {
-              intent: intent.intent,
-              success: false,
-              error: 'No line items found. Please specify what was purchased and the amount.',
+            if (lineItems.length === 0) {
+              return {
+                intent: intent.intent,
+                success: false,
+                error: 'No line items found. Please specify what was purchased and the amount.',
+              }
             }
-          }
 
-          const res = await fetch(`${baseUrl}/api/invoices`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              cookie: cookieHeader,
-            },
-            body: JSON.stringify({
+            if (!intent.resolved.contact_id) {
+              throw new Error('Contact not resolved')
+            }
+
+            const data = await createInvoiceRecord(supabase, companyId, {
               contact_id: intent.resolved.contact_id,
               customer_reference: intent.data.customer_reference,
-              issue_date: today,
+              issue_date: intent.data.date ?? today,
               due_date: dueDate,
-              line_items: lineItems, // rates already in cents
+              line_items: lineItems,
               notes: intent.data.notes,
               status: 'draft',
-            }),
-          })
-          const data = await res.json()
-          return {
-            intent: intent.intent,
-            success: res.ok,
-            record_id: data?.id,
-            error: res.ok ? undefined : data?.error ?? 'Failed to create invoice',
+            })
+
+            return { 
+              intent: intent.intent, 
+              success: true, 
+              record_id: data.id 
+            }
+          } catch (err: any) {
+            return { 
+              intent: intent.intent, 
+              success: false, 
+              error: err.message 
+            }
           }
         }
 
         case 'CREATE_BILL': {
-          const dueDate = new Date(
-            Date.now() + (intent.data.due_days ?? 30) * 86400000
-          ).toISOString().split('T')[0]
-          const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
-            const quantity = li.quantity ?? 1
-            const rate = li.rate ?? 0
-            return {
-              item_id: li.item_id ?? null,
-              description: li.description ?? '',
-              quantity,
-              rate,
-              amount: Math.round(quantity * rate),   // cents, integer, no floats
-              account_id: li.account_id ?? null,
-            }
-          })
+          try {
+            const dueDate = new Date(
+              Date.now() + (intent.data.due_days ?? 30) * 86400000
+            ).toISOString().split('T')[0]
+            const lineItems = (intent.resolved.line_items ?? []).map((li: any) => {
+              const quantity = li.quantity ?? 1
+              const rate = li.rate ?? 0
+              return {
+                item_id: li.item_id ?? null,
+                description: li.description ?? '',
+                quantity,
+                rate,
+                amount: Math.round(quantity * rate),
+                account_id: li.account_id ?? null,
+              }
+            })
 
-          if (lineItems.length === 0) {
-            return {
-              intent: intent.intent,
-              success: false,
-              error: 'No line items found. Please specify what was purchased and the amount.',
+            if (lineItems.length === 0) {
+              return {
+                intent: intent.intent,
+                success: false,
+                error: 'No line items found. Please specify what was purchased and the amount.',
+              }
             }
-          }
 
-          const res = await fetch(`${baseUrl}/api/bills`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              cookie: cookieHeader,
-            },
-            body: JSON.stringify({
+            if (!intent.resolved.contact_id) {
+              throw new Error('Contact not resolved')
+            }
+
+            const data = await createBillRecord(supabase, companyId, {
               contact_id: intent.resolved.contact_id,
-              vendor_reference: intent.data.vendor_reference,
-              issue_date: today,
+              reference_number: intent.data.vendor_reference,
+              issue_date: intent.data.date ?? today,
               due_date: dueDate,
-              line_items: lineItems, // rates already in cents
+              line_items: lineItems,
               notes: intent.data.notes,
               status: 'draft',
-            }),
-          })
-          const data = await res.json()
-          return {
-            intent: intent.intent,
-            success: res.ok,
-            record_id: data?.id,
-            error: res.ok ? undefined : data?.error ?? 'Failed to create bill',
+            })
+
+            return { 
+              intent: intent.intent, 
+              success: true, 
+              record_id: data.id 
+            }
+          } catch (err: any) {
+            return { 
+              intent: intent.intent, 
+              success: false, 
+              error: err.message 
+            }
           }
         }
 
         case 'CREATE_CONTACT': {
-          const res = await fetch(`${baseUrl}/api/contacts`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              cookie: cookieHeader,
-            },
-            body: JSON.stringify({
-              name: intent.data.name,
-              type: intent.data.type ?? 'both',
-              email: intent.data.email,
-              phone: intent.data.phone,
-              is_active: true,
-            }),
-          })
-          const data = await res.json()
-          return {
-            intent: intent.intent,
-            success: res.ok,
-            record_id: data?.id,
-            error: res.ok ? undefined : data?.error ?? 'Failed to create contact',
+          try {
+            const { data: contact, error } = await (supabase.from('contacts') as any)
+              .insert({
+                company_id: companyId,
+                name: intent.data.name,
+                type: intent.data.type ?? 'both',
+                email: intent.data.email,
+                phone: intent.data.phone,
+                is_active: true,
+              })
+              .select()
+              .limit(1)
+              .maybeSingle()
+
+            if (error || !contact) throw new Error(error?.message || 'Failed to create contact')
+
+            return {
+              intent: intent.intent,
+              success: true,
+              record_id: contact.id,
+            }
+          } catch (err: any) {
+            return { 
+              intent: intent.intent, 
+              success: false, 
+              error: err.message 
+            }
           }
         }
 
         case 'CREATE_ITEM': {
-          const res = await fetch(`${baseUrl}/api/items`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              cookie: cookieHeader,
-            },
-            body: JSON.stringify({
-              name: intent.data.item_name,
-              type: intent.data.item_type ?? 'service',
-              default_rate: intent.data.default_rate, // already cents
-              income_account_id: intent.resolved.income_account_id,
-              expense_account_id: intent.resolved.expense_account_id,
-              is_active: true,
-            }),
-          })
-          const data = await res.json()
-          return {
-            intent: intent.intent,
-            success: res.ok,
-            record_id: data?.id,
-            error: res.ok ? undefined : data?.error ?? 'Failed to create item',
+          try {
+            const { data: item, error } = await (supabase.from('items') as any)
+              .insert({
+                company_id: companyId,
+                name: intent.data.item_name,
+                type: intent.data.item_type ?? 'service',
+                default_rate: intent.data.default_rate,
+                income_account_id: intent.resolved.income_account_id,
+                expense_account_id: intent.resolved.expense_account_id,
+                is_active: true,
+              })
+              .select()
+              .limit(1)
+              .maybeSingle()
+
+            if (error || !item) throw new Error(error?.message || 'Failed to create item')
+
+            return {
+              intent: intent.intent,
+              success: true,
+              record_id: item.id,
+            }
+          } catch (err: any) {
+            return { 
+              intent: intent.intent, 
+              success: false, 
+              error: err.message 
+            }
           }
         }
 

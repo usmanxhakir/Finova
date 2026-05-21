@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -9,16 +8,25 @@ interface StudioGateProps {
 
 export async function StudioGate({ children }: StudioGateProps) {
   const supabase = await createClient()
-  const companyId = await getCompanyId()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: company } = await (supabase
-    .from('companies') as any)
-    .select('plan')
-    .eq('id', companyId)
+  if (!user) return null
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', user.id)
     .limit(1)
     .maybeSingle()
 
-  if ((company as any)?.plan === 'studio') {
+  const { data: company } = await supabase
+    .from('companies')
+    .select('plan')
+    .eq('id', profile?.company_id)
+    .limit(1)
+    .maybeSingle()
+
+  if (company?.plan === 'studio') {
     return <>{children}</>
   }
 
@@ -33,9 +41,7 @@ export async function StudioGate({ children }: StudioGateProps) {
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-800 mb-4">
           Studio Feature
         </span>
-        <h2 className="text-2xl font-bold text-gray-900 mt-2">
-          Purchase Orders
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-900 mt-2">Purchase Orders</h2>
         <p className="text-gray-500 mt-2 mb-8">
           Upgrade to Studio to unlock purchase orders, approval workflows, and more.
         </p>

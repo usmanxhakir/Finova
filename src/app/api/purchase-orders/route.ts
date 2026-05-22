@@ -21,12 +21,12 @@ export async function GET(request: Request) {
     const { data: purchaseOrders, error } = await (supabase.from('purchase_orders') as any)
       .select(`
         id,
-        po_number,
+        number,
         status,
         created_at,
-        total_amount,
+        total,
         contacts!purchase_orders_contact_id_fkey(name),
-        users!purchase_orders_created_by_id(email)
+        users!purchase_orders_created_by(email)
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
@@ -81,13 +81,13 @@ export async function POST(request: Request) {
     const { data: purchaseOrder, error: poError } = await (supabase.from('purchase_orders') as any)
       .insert({
         company_id: companyId,
-        po_number: poNumber,
+        number: poNumber,
         contact_id,
         notes,
         expected_date,
         status: 'draft',
-        total_amount: totalAmount,
-        created_by_id: user.id
+        total: totalAmount,
+        created_by: user.id
       })
       .select()
       .limit(1)

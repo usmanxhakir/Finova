@@ -17,8 +17,8 @@ export async function GET(
     const { data: purchaseOrder, error } = await (supabase.from('purchase_orders') as any)
       .select(`
         *,
-        contacts!purchase_orders_contact_id_fkey(name),
-        po_line_items(*)
+        contacts!purchase_orders_supplier_id_fkey(name),
+        purchase_order_line_items(*)
       `)
       .eq('id', id)
       .eq('company_id', companyId)
@@ -73,19 +73,19 @@ export async function PATCH(
     const { contact_id, notes, expected_date, reference_number, status, line_items } = body
 
     // Calculate total if line items are provided
-    let total_amount = undefined
+    let total = undefined
     if (line_items) {
-      total_amount = line_items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
+      total = line_items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
     }
 
     // 2. Update Purchase Order
     const updateData: any = {}
-    if (contact_id !== undefined) updateData.contact_id = contact_id
+    if (contact_id !== undefined) updateData.supplier_id = contact_id
     if (notes !== undefined) updateData.notes = notes
-    if (expected_date !== undefined) updateData.expected_date = expected_date
+    if (expected_date !== undefined) updateData.expected_delivery_date = expected_date
     if (reference_number !== undefined) updateData.reference_number = reference_number
     if (status !== undefined) updateData.status = status
-    if (total_amount !== undefined) updateData.total_amount = total_amount
+    if (total !== undefined) updateData.total = total
 
     const { error: poError } = await (supabase.from('purchase_orders') as any)
       .update(updateData)
@@ -99,26 +99,23 @@ export async function PATCH(
     // 3. Update Line Items if provided
     if (line_items) {
       // Delete existing
-      const { error: deleteError } = await (supabase.from('po_line_items') as any)
+      const { error: deleteError } = await (supabase.from('purchase_order_line_items') as any)
         .delete()
-        .eq('po_id', id)
-        .eq('company_id', companyId)
+        .eq('purchase_order_id', id)
 
       if (deleteError) throw new Error(`Failed to update line items (delete): ${deleteError.message}`)
 
       // Insert new
       const formattedLines = line_items.map((item: any) => ({
-        company_id: companyId,
-        po_id: id,
+        purchase_order_id: id,
         item_id: item.item_id || null,
         description: item.description,
         quantity: item.quantity,
         rate: item.rate,
-        amount: item.amount,
-        account_id: item.account_id
+        amount: item.amount
       }))
 
-      const { error: linesError } = await (supabase.from('po_line_items') as any)
+      const { error: linesError } = await (supabase.from('purchase_order_line_items') as any)
         .insert(formattedLines)
 
       if (linesError) throw new Error(`Failed to update line items (insert): ${linesError.message}`)
@@ -128,8 +125,8 @@ export async function PATCH(
     const { data: updatedPO } = await (supabase.from('purchase_orders') as any)
       .select(`
         *,
-        contacts!purchase_orders_contact_id_fkey(name),
-        po_line_items(*)
+        contacts!purchase_orders_supplier_id_fkey(name),
+        purchase_order_line_items(*)
       `)
       .eq('id', id)
       .eq('company_id', companyId)

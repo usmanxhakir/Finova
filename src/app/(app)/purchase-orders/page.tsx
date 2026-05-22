@@ -11,10 +11,10 @@ export default async function PurchaseOrdersPage() {
     .from('purchase_orders')
     .select(`
       id,
-      po_number,
+      number,
       status,
       created_at,
-      total_amount,
+      total,
       contacts (
         name
       )

@@ -24,10 +24,10 @@ import { Badge } from '@/components/ui/badge'
 
 interface PurchaseOrder {
   id: string
-  po_number: string
+  number: string
   status: string
   created_at: string
-  total_amount: number // BIGINT cents
+  total: number // BIGINT cents
   contacts: { name: string } | null
 }
 
@@ -66,7 +66,7 @@ export default function POList({ initialData }: POListProps) {
       const term = searchTerm.toLowerCase()
       filtered = filtered.filter(
         (po) =>
-          po.po_number.toLowerCase().includes(term) ||
+          po.number.toLowerCase().includes(term) ||
           (po.contacts?.name?.toLowerCase().includes(term) ?? false)
       )
     }
@@ -165,10 +165,10 @@ export default function POList({ initialData }: POListProps) {
                   window.location.href = `/purchase-orders/${po.id}`
                 }}
               >
-                <TableCell className="font-medium">{po.po_number}</TableCell>
+                <TableCell className="font-medium">{po.number}</TableCell>
                 <TableCell>{po.contacts?.name || 'No supplier'}</TableCell>
                 <TableCell className="text-right font-medium">
-                  {formatCurrency(po.total_amount)}
+                  {formatCurrency(po.total)}
                 </TableCell>
                 <TableCell>
                   <Badge className={STATUS_COLORS[po.status] || STATUS_COLORS.draft}>

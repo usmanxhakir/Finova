@@ -43,6 +43,8 @@ export default function RegisterPage() {
     const [adminId, setAdminId] = useState<string | null>(null)
     const [authSession, setAuthSession] = useState<any>(null)
     const [logoFile, setLogoFile] = useState<File | null>(null)
+    const [plan, setPlan] = useState<string>('pro')
+    const [registrationId, setRegistrationId] = useState<string | null>(null)
     const supabase = createClient()
 
     const step1Form = useForm<z.infer<typeof step1Schema>>({
@@ -57,13 +59,29 @@ export default function RegisterPage() {
 
     async function onStep1Submit(values: z.infer<typeof step1Schema>) {
         setIsLoading(true)
+
+        // Payment gate check
+        const res = await fetch('/api/check-registration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: values.email }),
+        })
+        const { allowed, plan: userPlan, registrationId: regId } = await res.json()
+
+        if (!allowed) {
+            toast.error('No active subscription found for this email. Please purchase a plan first.')
+            setIsLoading(false)
+            return
+        }
+
+        setPlan(userPlan)
+        setRegistrationId(regId)
+
         const { data, error } = await supabase.auth.signUp({
             email: values.email,
             password: values.password,
             options: {
-                data: {
-                    full_name: values.fullName,
-                },
+                data: { full_name: values.fullName },
             },
         })
 
@@ -80,7 +98,7 @@ export default function RegisterPage() {
                 setAuthSession(data.session)
             }
             setStep(2)
-            toast.success('Admin account created. Now setup your company.')
+            toast.success('Account created. Now set up your company.')
         }
         setIsLoading(false)
     }
@@ -107,14 +125,18 @@ export default function RegisterPage() {
             }
         }
 
-        // 1. Create Company
-        const { data: company, error: companyError } = await (supabase.from('companies') as any).insert({
-            name: values.companyName,
-            email: values.companyEmail,
-            phone: values.phone,
-            address: values.address,
-            logo_url: logoUrl,
-        }).select().single()
+        // Create company with plan from payment
+        const { data: company, error: companyError } = await (supabase.from('companies') as any)
+            .insert({
+                name: values.companyName,
+                email: values.companyEmail,
+                phone: values.phone,
+                address: values.address,
+                logo_url: logoUrl,
+                plan,
+            })
+            .select()
+            .single()
 
         if (companyError || !company) {
             toast.error('Error creating company: ' + companyError?.message)
@@ -124,24 +146,29 @@ export default function RegisterPage() {
 
         const companyId = company.id
 
-        // 2. Create Profile linked to Company
+        // Create profile
         const { error: profileError } = await (supabase.from('profiles') as any).upsert({
             id: adminId,
             full_name: step1Form.getValues().fullName,
             role: 'admin',
-            company_id: companyId
+            company_id: companyId,
         }, { onConflict: 'id' })
 
         if (profileError) {
             toast.error('Error creating profile: ' + profileError.message)
-            // Cleanup company if profile fails? (Optional, but RLS might prevent further steps anyway)
             setIsLoading(false)
             return
         }
 
-        // 3. Seed Default Chart of Accounts
+        // Mark registration used + create subscription row
+        await fetch('/api/complete-registration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ registrationId, companyId }),
+        })
+
+        // Seed default chart of accounts
         const defaultAccounts = [
-            // Assets
             { company_id: companyId, code: '1000', name: 'Checking Account', type: 'asset', sub_type: 'bank', description: 'Main operating bank account', is_active: true, is_system: false },
             { company_id: companyId, code: '1010', name: 'Savings Account', type: 'asset', sub_type: 'bank', description: 'Business savings account', is_active: true, is_system: false },
             { company_id: companyId, code: '1020', name: 'Petty Cash', type: 'asset', sub_type: 'cash', description: 'Cash on hand', is_active: true, is_system: false },
@@ -150,24 +177,16 @@ export default function RegisterPage() {
             { company_id: companyId, code: '1300', name: 'Prepaid Expenses', type: 'asset', sub_type: 'other_current_asset', description: 'Prepaid insurance, rent, software', is_active: true, is_system: false },
             { company_id: companyId, code: '1500', name: 'Equipment', type: 'asset', sub_type: 'fixed_asset', description: 'Computers, machinery, equipment', is_active: true, is_system: false },
             { company_id: companyId, code: '1510', name: 'Accumulated Depreciation', type: 'asset', sub_type: 'fixed_asset', description: 'Accumulated depreciation on fixed assets', is_active: true, is_system: false },
-
-            // Liabilities
             { company_id: companyId, code: '2000', name: 'Accounts Payable', type: 'liability', sub_type: 'accounts_payable', description: 'Money owed to vendors', is_active: true, is_system: true },
             { company_id: companyId, code: '2100', name: 'Credit Card', type: 'liability', sub_type: 'credit_card', description: 'Business credit card', is_active: true, is_system: false },
             { company_id: companyId, code: '2200', name: 'Tax Payable', type: 'liability', sub_type: 'other_current_liability', description: 'Sales tax collected, not yet remitted', is_active: true, is_system: false },
             { company_id: companyId, code: '2300', name: 'Accrued Liabilities', type: 'liability', sub_type: 'other_current_liability', description: 'Wages, benefits, and other accruals', is_active: true, is_system: false },
             { company_id: companyId, code: '2500', name: 'Loans Payable', type: 'liability', sub_type: 'long_term_liability', description: 'Bank loans and long-term debt', is_active: true, is_system: false },
-
-            // Equity
             { company_id: companyId, code: '3000', name: "Owner's Equity", type: 'equity', sub_type: 'equity', description: 'Owner investment and drawings', is_active: true, is_system: false },
             { company_id: companyId, code: '3100', name: 'Retained Earnings', type: 'equity', sub_type: 'equity', description: 'Cumulative net income or loss', is_active: true, is_system: false },
-
-            // Revenue
             { company_id: companyId, code: '4000', name: 'Sales Revenue', type: 'revenue', sub_type: 'income', description: 'Income from goods sold', is_active: true, is_system: false },
             { company_id: companyId, code: '4100', name: 'Service Revenue', type: 'revenue', sub_type: 'income', description: 'Income from services rendered', is_active: true, is_system: false },
             { company_id: companyId, code: '4200', name: 'Other Income', type: 'revenue', sub_type: 'other_income', description: 'Interest, refunds, miscellaneous income', is_active: true, is_system: false },
-
-            // Expenses
             { company_id: companyId, code: '5000', name: 'Cost of Goods Sold', type: 'expense', sub_type: 'cost_of_goods_sold', description: 'Direct cost of products sold', is_active: true, is_system: false },
             { company_id: companyId, code: '6000', name: 'Payroll & Salaries', type: 'expense', sub_type: 'expense', description: 'Employee wages and salaries', is_active: true, is_system: false },
             { company_id: companyId, code: '6100', name: 'Rent & Utilities', type: 'expense', sub_type: 'expense', description: 'Office rent, internet, electricity', is_active: true, is_system: false },
@@ -183,10 +202,9 @@ export default function RegisterPage() {
         const { error: coaError } = await (supabase.from('accounts') as any).insert(defaultAccounts)
 
         if (coaError) {
-            console.error('COA Seeding Error:', coaError)
             toast.error('Company created but failed to seed Chart of Accounts: ' + coaError.message)
             setIsLoading(false)
-            return  // stop here — don't send user to dashboard with broken state
+            return
         }
 
         toast.success('Setup complete! Your account is ready.')
@@ -260,8 +278,20 @@ export default function RegisterPage() {
                                     )}
                                 />
                                 <Button type="submit" className="w-full" disabled={isLoading}>
-                                    {isLoading ? 'Creating account...' : 'Next Step'}
+                                    {isLoading ? 'Checking subscription...' : 'Next Step'}
                                 </Button>
+                                <p className="text-center text-sm text-muted-foreground">
+                                    Already have an account?{' '}
+                                    <Button variant="link" className="p-0 h-auto text-violet-600" onClick={() => router.push('/login')}>
+                                        Sign in
+                                    </Button>
+                                </p>
+                                <p className="text-center text-sm text-muted-foreground">
+                                    Need a plan?{' '}
+                                    <a href="https://fyntrax.site/pricing" className="text-violet-600 hover:underline">
+                                        View pricing
+                                    </a>
+                                </p>
                             </form>
                         </Form>
                     ) : (

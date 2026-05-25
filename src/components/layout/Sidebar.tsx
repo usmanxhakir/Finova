@@ -62,6 +62,7 @@ const navItems = [
     { name: "Dashboard",  href: "/dashboard", icon: LayoutDashboard },
     { name: "Invoices",   href: "/invoices",  icon: FileText },
     { name: "Bills",      href: "/bills",     icon: Receipt },
+    { name: "Purchase Orders", href: "/purchase-orders", icon: ClipboardList },
     { name: "Expenses",   href: "/expenses",  icon: CreditCard },
     { name: "Contacts",   href: "/contacts",  icon: Users },
     { name: "Items",      href: "/items",     icon: Package },
@@ -251,6 +252,12 @@ export function Sidebar() {
                                 <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
                                     <Receipt className="mr-2 h-4 w-4 text-zinc-400" />
                                     <span>New Bill</span>
+                                </DropdownMenuItem>
+                            </Link>
+                            <Link href="/purchase-orders/new">
+                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                    <ClipboardList className="mr-2 h-4 w-4 text-zinc-400" />
+                                    <span>New Purchase Order</span>
                                 </DropdownMenuItem>
                             </Link>
                             <Link href="/expenses">

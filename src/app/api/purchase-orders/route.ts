@@ -100,6 +100,7 @@ export async function POST(request: Request) {
         expected_delivery_date,
         reference_number,
         status,
+        subtotal: totalAmount,
         total: totalAmount,
         created_by: user.id
       })
@@ -114,7 +115,6 @@ export async function POST(request: Request) {
 
     // 4. Insert Line Items
     const formattedLines = line_items.map((item: any) => ({
-      company_id: companyId,
       po_id: purchaseOrder.id,
       item_id: item.item_id || null,
       description: item.description,

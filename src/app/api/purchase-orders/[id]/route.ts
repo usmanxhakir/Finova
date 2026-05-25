@@ -132,13 +132,11 @@ export async function PATCH(
       const { error: deleteError } = await (supabase.from('po_line_items') as any)
         .delete()
         .eq('po_id', id)
-        .eq('company_id', companyId)
 
       if (deleteError) throw new Error(`Failed to update line items: ${deleteError.message}`)
 
       if (line_items.length > 0) {
         const formattedLines = line_items.map((item: any) => ({
-          company_id: companyId,
           po_id: id,
           item_id: item.item_id || null,
           description: item.description,

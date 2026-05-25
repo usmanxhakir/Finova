@@ -62,7 +62,19 @@ export async function POST(request: Request) {
     const companyId = profile.company_id
 
     const body = await request.json()
-    const { contact_id, line_items, notes, expected_date } = body
+    const {
+      contact_id,
+      line_items,
+      notes,
+      issue_date,
+      expected_delivery_date,
+      reference_number,
+      status = 'draft',
+    } = body
+
+    if (!['draft', 'pending_approval'].includes(status)) {
+      return Response.json({ error: 'Invalid purchase order status' }, { status: 400 })
+    }
 
     // 1. Generate PO Number via RPC
     const { data: poNumber, error: numError } = await (supabase as any)
@@ -84,8 +96,10 @@ export async function POST(request: Request) {
         number: poNumber,
         contact_id,
         notes,
-        expected_date,
-        status: 'draft',
+        issue_date,
+        expected_delivery_date,
+        reference_number,
+        status,
         total: totalAmount,
         created_by: user.id
       })

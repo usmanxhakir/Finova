@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import POActions from '@/components/purchase-orders/POActions'
 
 interface PurchaseOrderLineItem {
   id: string
@@ -43,6 +44,7 @@ interface PurchaseOrderDetail {
   total: number | string | bigint
   contacts: { name: string } | null
   po_line_items: PurchaseOrderLineItem[]
+  current_step_order: number | null
 }
 
 interface ApprovalRecord {
@@ -418,29 +420,13 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
                     </Button>
                   </form>
                 )}
-
-                {purchaseOrder.status === 'pending_approval' && (
-                  <div className="grid gap-2">
-                    <Button type="button" className="w-full">
-                      Approve
-                    </Button>
-                    <Button type="button" variant="outline" className="w-full">
-                      Reject
-                    </Button>
-                  </div>
-                )}
-
-                {purchaseOrder.status === 'approved' && (
-                  <Button type="button" className="w-full">
-                    Convert to Bill
-                  </Button>
-                )}
-
-                {(purchaseOrder.status === 'void' || purchaseOrder.status === 'converted') && (
-                  <p className="text-sm text-muted-foreground">
-                    No actions available for this purchase order status.
-                  </p>
-                )}
+                
+                <POActions 
+                  poId={purchaseOrder.id}
+                  status={purchaseOrder.status}
+                  currentStepOrder={purchaseOrder.current_step_order ?? 1}
+                  totalSteps={approvalRecords.length}
+                />
               </CardContent>
             </Card>
           </div>

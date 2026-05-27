@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CompanyTab } from '@/components/settings/CompanyTab'
 import { UsersTab } from '@/components/settings/UsersTab'
-import { Building2, Users } from 'lucide-react'
+import { WorkflowTab } from '@/components/settings/WorkflowTab'
+import { Building2, ShoppingCart, Users } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
 interface SettingsClientProps {
@@ -32,10 +33,14 @@ export function SettingsClient({ initialCompanySettings, userProfile }: Settings
             </div>
 
             <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 max-w-md">
+                <TabsList className="grid w-full grid-cols-3 max-w-md">
                     <TabsTrigger value="company" className="flex items-center gap-2">
                         <Building2 className="h-4 w-4" />
                         Company Settings
+                    </TabsTrigger>
+                    <TabsTrigger value="purchase-orders" className="flex items-center gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Purchase Orders
                     </TabsTrigger>
                     {isAdmin && (
                         <TabsTrigger value="users" className="flex items-center gap-2">
@@ -47,6 +52,10 @@ export function SettingsClient({ initialCompanySettings, userProfile }: Settings
 
                 <TabsContent value="company" className="mt-6">
                     <CompanyTab initialSettings={initialCompanySettings ?? {}} />
+                </TabsContent>
+
+                <TabsContent value="purchase-orders" className="mt-6">
+                    <WorkflowTab companyId={initialCompanySettings.id} />
                 </TabsContent>
 
                 {isAdmin && (

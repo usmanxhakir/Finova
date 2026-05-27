@@ -186,17 +186,38 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
     let redirectTo: string | null = null
 
     try {
-      const response = await apiFetch(`/api/purchase-orders/${id}`, {
+      const applyResponse = await apiFetch('/api/settings/purchase-order-workflow/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ po_id: id }),
+      })
+
+      if (!applyResponse.ok) {
+        let message = 'Failed to apply purchase order approval workflow'
+
+        try {
+          const payload = (await applyResponse.json()) as { error?: string }
+          if (payload?.error) {
+            message = payload.error
+          }
+        } catch {
+          // Keep fallback message when response is not JSON.
+        }
+
+        throw new Error(message)
+      }
+
+      const updateResponse = await apiFetch(`/api/purchase-orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'pending_approval' }),
       })
 
-      if (!response.ok) {
+      if (!updateResponse.ok) {
         let message = 'Failed to submit purchase order for approval'
 
         try {
-          const payload = (await response.json()) as { error?: string }
+          const payload = (await updateResponse.json()) as { error?: string }
           if (payload?.error) {
             message = payload.error
           }
@@ -212,6 +233,7 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
       redirectTo = `/purchase-orders/${id}`
     } catch (error) {
       console.error('[PO Detail] submit for approval error:', error)
+      throw error
     }
 
     if (redirectTo) redirect(redirectTo)

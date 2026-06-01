@@ -198,15 +198,21 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
         let message = 'Failed to apply purchase order approval workflow'
 
         try {
-          const payload = (await applyResponse.json()) as { error?: string }
-          if (payload?.error) {
+          const responseBody = await applyResponse.text()
+          const payload = responseBody ? JSON.parse(responseBody) as { error?: unknown } : null
+
+          if (typeof payload?.error === 'string') {
             message = payload.error
+          } else if (payload?.error) {
+            message = JSON.stringify(payload.error)
+          } else if (responseBody) {
+            message = responseBody
           }
         } catch {
-          // Keep fallback message when response is not JSON.
+          // Keep fallback message when the response body cannot be parsed.
         }
 
-        throw new Error(message)
+        throw new Error(`${message} (${applyResponse.status})`)
       }
 
       const updateResponse = await apiFetch(`/api/purchase-orders/${id}`, {

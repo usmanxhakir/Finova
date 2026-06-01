@@ -19,11 +19,11 @@ const applySchema = z.object({
   po_id: z.string().uuid(),
 })
 
-function toBigInt(value: unknown) {
+function toBigInt(value: unknown): bigint {
   if (typeof value === 'bigint') return value
-  if (typeof value === 'number') return BigInt(value)
-  if (typeof value === 'string') return BigInt(value)
-  throw new Error('Invalid bigint value')
+  if (typeof value === 'number') return BigInt(Math.round(value))
+  if (typeof value === 'string' && value.trim() !== '') return BigInt(value.trim())
+  return BigInt(0)
 }
 
 export async function POST(request: NextRequest) {
@@ -80,15 +80,22 @@ export async function POST(request: NextRequest) {
     if (tiersError) throw new Error(tiersError.message)
     if (!tiers || tiers.length === 0) return NextResponse.json({ error: 'Workflow has no tiers' }, { status: 400 })
 
-    const poTotal = toBigInt(purchaseOrder.total ?? 0)
+    let matchedTier: any
 
-    const matchedTier = (tiers as any[]).find((tier) => {
-      const min = toBigInt(tier.min_amount ?? 0)
-      const max = tier.max_amount === null || tier.max_amount === undefined ? null : toBigInt(tier.max_amount)
-      if (poTotal < min) return false
-      if (max !== null && poTotal > max) return false
-      return true
-    })
+    try {
+      const poTotal = toBigInt(purchaseOrder.total ?? 0)
+
+      matchedTier = (tiers as any[]).find((tier) => {
+        const min = toBigInt(tier.min_amount ?? 0)
+        const max = tier.max_amount === null || tier.max_amount === undefined ? null : toBigInt(tier.max_amount)
+        if (poTotal < min) return false
+        if (max !== null && poTotal > max) return false
+        return true
+      })
+    } catch (error) {
+      console.error('[API Purchase Order Workflow APPLY] tier matching error:', error)
+      throw error
+    }
 
     if (!matchedTier) {
       return NextResponse.json({ error: 'No matching workflow tier for this purchase order total' }, { status: 400 })

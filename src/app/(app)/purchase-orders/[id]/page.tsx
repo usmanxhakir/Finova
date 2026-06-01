@@ -19,6 +19,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import POActions from '@/components/purchase-orders/POActions'
+import { applyWorkflowToPO } from '@/lib/purchase-orders/apply-workflow'
 
 interface PurchaseOrderLineItem {
   id: string
@@ -188,31 +189,27 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
     let redirectTo: string | null = null
 
     try {
-      const applyResponse = await apiFetch('/api/settings/purchase-order-workflow/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ po_id: id }),
-      })
+      const supabase = await createClient()
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-      if (!applyResponse.ok) {
-        let message = 'Failed to apply purchase order approval workflow'
+      if (authError || !user) {
+        throw new Error('Unauthorized')
+      }
 
-        try {
-          const responseBody = await applyResponse.text()
-          const payload = responseBody ? JSON.parse(responseBody) as { error?: unknown } : null
+      const { data: profile, error: profileError } = await (supabase.from('profiles') as any)
+        .select('company_id')
+        .eq('id', user.id)
+        .limit(1)
+        .maybeSingle()
 
-          if (typeof payload?.error === 'string') {
-            message = payload.error
-          } else if (payload?.error) {
-            message = JSON.stringify(payload.error)
-          } else if (responseBody) {
-            message = responseBody
-          }
-        } catch {
-          // Keep fallback message when the response body cannot be parsed.
-        }
+      if (profileError) {
+        throw new Error(profileError.message)
+      }
 
-        throw new Error(`${message} (${applyResponse.status})`)
+      const result = await applyWorkflowToPO(supabase, id, profile?.company_id)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to apply purchase order approval workflow')
       }
 
       const updateResponse = await apiFetch(`/api/purchase-orders/${id}`, {

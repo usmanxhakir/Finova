@@ -1,6 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from '@/lib/supabase/server'
+
+type WorkflowPayload = {
+  name: string
+  is_active: boolean
+  tiers: Array<{
+    name: string
+    min_amount: string
+    max_amount: string | null
+    steps: Array<{
+      step_order: number
+      step_label: string
+      approver_user_id: string | null
+      approver_email: string | null
+    }>
+  }>
+}
 
 async function getCompanyId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: profile, error } = await (supabase.from('profiles') as any)
@@ -15,59 +30,29 @@ async function getCompanyId(supabase: Awaited<ReturnType<typeof createClient>>, 
   return profile.company_id as string
 }
 
-function toBigIntCentsString(value: string | number) {
-  const raw = typeof value === 'number' ? String(value) : value
-  if (typeof raw !== 'string') throw new Error('Invalid amount')
-  const normalized = raw.trim()
-  if (!/^\d+$/.test(normalized)) throw new Error('Amounts must be integer cents')
-  return BigInt(normalized).toString()
+async function getAuthedCompanyId(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    throw new Error('Unauthorized')
+  }
+
+  return getCompanyId(supabase, user.id)
 }
 
-const stepSchema = z
-  .object({
-    step_order: z.number().int().positive(),
-    step_label: z.string().min(1),
-    approver_user_id: z.string().uuid().nullable().optional(),
-    approver_email: z.string().email().nullable().optional(),
-  })
-  .refine(
-    (step) => Boolean(step.approver_user_id) !== Boolean(step.approver_email),
-    { message: 'Step must have exactly one approver (user or external email).' }
-  )
-
-const tierSchema = z.object({
-  name: z.string().min(1),
-  min_amount: z.union([z.string(), z.number()]),
-  max_amount: z.union([z.string(), z.number()]).nullable().optional(),
-  steps: z.array(stepSchema),
-})
-
-const workflowSchema = z.object({
-  name: z.string().min(1),
-  is_active: z.boolean().optional(),
-  tiers: z.array(tierSchema).min(1),
-})
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const companyId = await getCompanyId(supabase, user.id)
+    const companyId = await getAuthedCompanyId(supabase)
 
     const { data: workflow, error: workflowError } = await (supabase.from('po_approval_workflows') as any)
-      .select('id, name, is_active, created_at')
+      .select('id, name, is_active')
       .eq('company_id', companyId)
-      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
     if (workflowError) throw new Error(workflowError.message)
-    if (!workflow) return NextResponse.json(null)
+    if (!workflow) return Response.json(null)
 
     const { data: tiers, error: tiersError } = await (supabase.from('po_workflow_tiers') as any)
       .select('id, name, min_amount, max_amount')
@@ -76,166 +61,146 @@ export async function GET(request: NextRequest) {
 
     if (tiersError) throw new Error(tiersError.message)
 
-    const tierIds = (tiers || []).map((tier: any) => tier.id)
-    let steps: any[] = []
-    if (tierIds.length > 0) {
-      const { data: stepsData, error: stepsError } = await (supabase.from('po_workflow_steps') as any)
-        .select('id, tier_id, step_order, step_label, approver_user_id, approver_email')
-        .in('tier_id', tierIds)
+    const tiersWithSteps = []
+
+    for (const tier of tiers || []) {
+      const { data: steps, error: stepsError } = await (supabase.from('po_workflow_steps') as any)
+        .select('id, step_order, step_label, approver_user_id, approver_email')
+        .eq('tier_id', tier.id)
         .order('step_order', { ascending: true })
 
       if (stepsError) throw new Error(stepsError.message)
-      steps = stepsData || []
-    }
 
-    const stepsByTierId = new Map<string, any[]>()
-    for (const step of steps) {
-      const list = stepsByTierId.get(step.tier_id) || []
-      list.push(step)
-      stepsByTierId.set(step.tier_id, list)
-    }
-
-    const payload = {
-      workflow: {
-        id: workflow.id,
-        name: workflow.name,
-        is_active: Boolean(workflow.is_active),
-      },
-      tiers: (tiers || []).map((tier: any) => ({
-        ...tier,
-        steps: (stepsByTierId.get(tier.id) || []).map((step) => ({
+      tiersWithSteps.push({
+        id: tier.id,
+        name: tier.name,
+        min_amount: tier.min_amount,
+        max_amount: tier.max_amount,
+        steps: (steps || []).map((step: any) => ({
           id: step.id,
           step_order: step.step_order,
           step_label: step.step_label,
           approver_user_id: step.approver_user_id ?? null,
           approver_email: step.approver_email ?? null,
         })),
-      })),
-    }
-
-    return NextResponse.json(payload)
-  } catch (error: any) {
-    console.error('[API Purchase Order Workflow GET] error:', error)
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
-  }
-}
-
-async function replaceWorkflow(request: NextRequest) {
-  const supabase = await createClient()
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const companyId = await getCompanyId(supabase, user.id)
-  const body = await request.json()
-  const validated = workflowSchema.parse(body)
-
-  const desiredIsActive = validated.is_active ?? true
-
-  const { data: existingWorkflows, error: existingError } = await (supabase.from('po_approval_workflows') as any)
-    .select('id')
-    .eq('company_id', companyId)
-
-  if (existingError) throw new Error(existingError.message)
-
-  const newWorkflowId = crypto.randomUUID()
-
-  try {
-    const { error: insertWorkflowError } = await (supabase.from('po_approval_workflows') as any).insert({
-      id: newWorkflowId,
-      company_id: companyId,
-      name: validated.name,
-      is_active: false,
-    })
-
-    if (insertWorkflowError) throw new Error(insertWorkflowError.message)
-
-    const tierRows: any[] = []
-    const stepRows: any[] = []
-
-    for (const tier of validated.tiers) {
-      const tierId = crypto.randomUUID()
-      const minAmount = toBigIntCentsString(tier.min_amount)
-      const maxAmount = tier.max_amount === null || tier.max_amount === undefined ? null : toBigIntCentsString(tier.max_amount)
-
-      if (maxAmount !== null && BigInt(maxAmount) < BigInt(minAmount)) {
-        throw new Error(`Tier "${tier.name}" max_amount must be >= min_amount`)
-      }
-
-      tierRows.push({
-        id: tierId,
-        workflow_id: newWorkflowId,
-        name: tier.name,
-        min_amount: minAmount,
-        max_amount: maxAmount,
       })
-
-      for (const step of tier.steps) {
-        stepRows.push({
-          id: crypto.randomUUID(),
-          tier_id: tierId,
-          step_order: step.step_order,
-          step_label: step.step_label,
-          approver_user_id: step.approver_user_id ?? null,
-          approver_email: step.approver_email ?? null,
-        })
-      }
     }
 
-    const { error: insertTiersError } = await (supabase.from('po_workflow_tiers') as any).insert(tierRows)
-    if (insertTiersError) throw new Error(insertTiersError.message)
-
-    if (stepRows.length > 0) {
-      const { error: insertStepsError } = await (supabase.from('po_workflow_steps') as any).insert(stepRows)
-      if (insertStepsError) throw new Error(insertStepsError.message)
-    }
-
-    const { error: deleteOldError } = await (supabase.from('po_approval_workflows') as any)
-      .delete()
-      .eq('company_id', companyId)
-      .neq('id', newWorkflowId)
-
-    if (deleteOldError) throw new Error(deleteOldError.message)
-
-    const { error: activateError } = await (supabase.from('po_approval_workflows') as any)
-      .update({ is_active: desiredIsActive })
-      .eq('id', newWorkflowId)
-      .eq('company_id', companyId)
-
-    if (activateError) throw new Error(activateError.message)
-
-    return NextResponse.json({
-      workflow_id: newWorkflowId,
-      replaced_workflow_ids: (existingWorkflows || []).map((row: any) => row.id),
+    return Response.json({
+      workflow: {
+        id: workflow.id,
+        name: workflow.name,
+        is_active: workflow.is_active,
+      },
+      tiers: tiersWithSteps,
     })
   } catch (error) {
-    await (supabase.from('po_approval_workflows') as any).delete().eq('id', newWorkflowId).eq('company_id', companyId)
-    throw error
+    const message = error instanceof Error ? error.message : 'Internal Server Error'
+    const status = message === 'Unauthorized' ? 401 : 500
+    return Response.json({ error: message }, { status })
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    return await replaceWorkflow(request)
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues }, { status: 400 })
-    }
-    console.error('[API Purchase Order Workflow POST] error:', error)
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
-  }
-}
+    const supabase = await createClient()
+    const companyId = await getAuthedCompanyId(supabase)
+    const body = await request.json() as WorkflowPayload
 
-export async function PUT(request: NextRequest) {
-  try {
-    return await replaceWorkflow(request)
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues }, { status: 400 })
+    const { data: existingWorkflow, error: existingError } = await (supabase.from('po_approval_workflows') as any)
+      .select('id')
+      .eq('company_id', companyId)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingError) throw new Error(existingError.message)
+
+    let workflowId: string
+
+    if (!existingWorkflow) {
+      const { data: newWorkflow, error: insertWorkflowError } = await (supabase.from('po_approval_workflows') as any)
+        .insert({
+          company_id: companyId,
+          name: body.name,
+          is_active: body.is_active,
+        })
+        .select('id')
+        .limit(1)
+        .maybeSingle()
+
+      if (insertWorkflowError) throw new Error(insertWorkflowError.message)
+      if (!newWorkflow?.id) throw new Error('Failed to create workflow')
+
+      workflowId = newWorkflow.id
+    } else {
+      workflowId = existingWorkflow.id
+
+      const { error: updateWorkflowError } = await (supabase.from('po_approval_workflows') as any)
+        .update({
+          name: body.name,
+          is_active: body.is_active,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workflowId)
+
+      if (updateWorkflowError) throw new Error(updateWorkflowError.message)
     }
-    console.error('[API Purchase Order Workflow PUT] error:', error)
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 })
+
+    const { data: existingTiers, error: existingTiersError } = await (supabase.from('po_workflow_tiers') as any)
+      .select('id')
+      .eq('workflow_id', workflowId)
+
+    if (existingTiersError) throw new Error(existingTiersError.message)
+
+    const existingTierIds = (existingTiers || []).map((tier: any) => tier.id)
+
+    if (existingTierIds.length > 0) {
+      const { error: deleteStepsError } = await (supabase.from('po_workflow_steps') as any)
+        .delete()
+        .in('tier_id', existingTierIds)
+
+      if (deleteStepsError) throw new Error(deleteStepsError.message)
+    }
+
+    const { error: deleteTiersError } = await (supabase.from('po_workflow_tiers') as any)
+      .delete()
+      .eq('workflow_id', workflowId)
+
+    if (deleteTiersError) throw new Error(deleteTiersError.message)
+
+    for (const tier of body.tiers || []) {
+      const { data: newTier, error: insertTierError } = await (supabase.from('po_workflow_tiers') as any)
+        .insert({
+          workflow_id: workflowId,
+          name: tier.name,
+          min_amount: tier.min_amount,
+          max_amount: tier.max_amount,
+        })
+        .select('id')
+        .limit(1)
+        .maybeSingle()
+
+      if (insertTierError) throw new Error(insertTierError.message)
+      if (!newTier?.id) throw new Error('Failed to create workflow tier')
+
+      for (const step of tier.steps || []) {
+        const { error: insertStepError } = await (supabase.from('po_workflow_steps') as any)
+          .insert({
+            tier_id: newTier.id,
+            step_order: step.step_order,
+            step_label: step.step_label,
+            approver_user_id: step.approver_user_id,
+            approver_email: step.approver_email,
+          })
+
+        if (insertStepError) throw new Error(insertStepError.message)
+      }
+    }
+
+    return Response.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal Server Error'
+    const status = message === 'Unauthorized' ? 401 : 500
+    return Response.json({ error: message }, { status })
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronsUpDown, Loader2, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
@@ -208,13 +209,25 @@ export default function NewPurchaseOrderPage() {
           expected_delivery_date: expectedDeliveryDate || null,
           reference_number: referenceNumber.trim() || null,
           notes: notes.trim() || null,
-          status,
+          status: 'draft',
           line_items,
         }),
       })
 
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to create purchase order')
+
+      if (status === 'pending_approval') {
+        const submitResponse = await fetch(`/api/purchase-orders/${result.id}/submit`, {
+          method: 'POST',
+        })
+        const submitResult = await submitResponse.json()
+
+        if (!submitResponse.ok) {
+          toast.error(submitResult.error || 'Failed to submit purchase order for approval')
+          return
+        }
+      }
 
       router.push(`/purchase-orders/${result.id}`)
     } catch (submitError: any) {

@@ -1,7 +1,5 @@
 import Link from 'next/link'
 import { cookies, headers } from 'next/headers'
-import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { StudioGate } from '@/components/ui/StudioGate'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +17,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import POActions from '@/components/purchase-orders/POActions'
-import { applyWorkflowToPO } from '@/lib/purchase-orders/apply-workflow'
+import SubmitForApprovalButton from '@/components/purchase-orders/SubmitForApprovalButton'
 
 interface PurchaseOrderLineItem {
   id: string
@@ -182,67 +180,6 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
 
   const approvalRecords = ((approvalRecordsData || []) as ApprovalRecord[])
     .sort((a, b) => a.step_order - b.step_order)
-
-  const submitForApproval = async (_formData: FormData) => {
-    'use server'
-
-    let redirectTo: string | null = null
-
-    try {
-      const supabase = await createClient()
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-      if (authError || !user) {
-        throw new Error('Unauthorized')
-      }
-
-      const { data: profile, error: profileError } = await (supabase.from('profiles') as any)
-        .select('company_id')
-        .eq('id', user.id)
-        .limit(1)
-        .maybeSingle()
-
-      if (profileError) {
-        throw new Error(profileError.message)
-      }
-
-      const result = await applyWorkflowToPO(supabase, id, profile?.company_id)
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to apply purchase order approval workflow')
-      }
-
-      const updateResponse = await apiFetch(`/api/purchase-orders/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending_approval' }),
-      })
-
-      if (!updateResponse.ok) {
-        let message = 'Failed to submit purchase order for approval'
-
-        try {
-          const payload = (await updateResponse.json()) as { error?: string }
-          if (payload?.error) {
-            message = payload.error
-          }
-        } catch {
-          // Keep fallback message when response is not JSON.
-        }
-
-        throw new Error(message)
-      }
-
-      revalidatePath(`/purchase-orders/${id}`)
-      revalidatePath('/purchase-orders')
-      redirectTo = `/purchase-orders/${id}`
-    } catch (error) {
-      console.error('[PO Detail] submit for approval error:', error)
-      throw error
-    }
-
-    if (redirectTo) redirect(redirectTo)
-  }
 
   return (
     <StudioGate>
@@ -417,11 +354,7 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
               </CardHeader>
               <CardContent>
                 {purchaseOrder.status === 'draft' && (
-                  <form action={submitForApproval}>
-                    <Button className="w-full bg-violet-600 hover:bg-violet-700" type="submit">
-                      Submit for Approval
-                    </Button>
-                  </form>
+                  <SubmitForApprovalButton poId={purchaseOrder.id} />
                 )}
                 
                 <POActions 

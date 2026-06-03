@@ -5,7 +5,6 @@ import { StudioGate } from '@/components/ui/StudioGate'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -14,9 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import POActions from '@/components/purchase-orders/POActions'
+import POComments from '@/components/purchase-orders/POComments'
 import SubmitForApprovalButton from '@/components/purchase-orders/SubmitForApprovalButton'
 
 interface PurchaseOrderLineItem {
@@ -284,14 +283,8 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
               <CardHeader>
                 <CardTitle>Comments & Discussion</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">No comments yet</p>
-                <div className="space-y-3">
-                  <Textarea placeholder="Add a comment..." rows={3} />
-                  <div className="flex justify-end">
-                    <Button type="button">Send</Button>
-                  </div>
-                </div>
+              <CardContent>
+                <POComments poId={id} />
               </CardContent>
             </Card>
           </div>

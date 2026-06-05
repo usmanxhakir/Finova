@@ -14,11 +14,50 @@ interface POActionsProps {
   totalSteps: number
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+function ConvertToBillButton({ poId }: { poId: string }) {
+  const router = useRouter()
+  const [isConverting, setIsConverting] = useState(false)
+
+  const handleConvert = async () => {
+    setIsConverting(true)
+    try {
+      const res = await fetch(`/api/purchase-orders/${poId}/convert-to-bill`, {
+        method: 'POST',
+      })
+      const data = await res.json() as { billId?: string; error?: string }
+
+      if (!res.ok) throw new Error(data.error || 'Failed to convert')
+      if (!data.billId) throw new Error('Bill was created but no bill ID was returned')
+
+      toast.success('Purchase order converted to bill')
+      router.push(`/bills/${data.billId}`)
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'An error occurred'))
+    } finally {
+      setIsConverting(false)
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      className="w-full bg-violet-600 hover:bg-violet-700"
+      onClick={handleConvert}
+      disabled={isConverting}
+    >
+      {isConverting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      Convert to Bill
+    </Button>
+  )
+}
+
 export default function POActions({
   poId,
   status,
-  currentStepOrder,
-  totalSteps,
 }: POActionsProps) {
   const router = useRouter()
   const [isApproving, setIsApproving] = useState(false)
@@ -40,8 +79,8 @@ export default function POActions({
 
       toast.success('Purchase order approved successfully')
       router.refresh()
-    } catch (error: any) {
-      toast.error(error.message || 'An error occurred while approving')
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'An error occurred while approving'))
     } finally {
       setIsApproving(false)
     }
@@ -69,8 +108,8 @@ export default function POActions({
       toast.success('Purchase order rejected successfully')
       router.refresh()
       setShowRejectForm(false)
-    } catch (error: any) {
-      toast.error(error.message || 'An error occurred while rejecting')
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'An error occurred while rejecting'))
     } finally {
       setIsRejecting(false)
     }
@@ -142,9 +181,7 @@ export default function POActions({
 
   if (status === 'approved') {
     return (
-      <Button type="button" className="w-full" disabled>
-        Convert to Bill
-      </Button>
+      <ConvertToBillButton poId={poId} />
     )
   }
 

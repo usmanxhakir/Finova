@@ -8,6 +8,7 @@ type QueryBuilder<T> = PromiseLike<QueryResult<T>> & {
   delete: () => QueryBuilder<T>
   eq: (column: string, value: unknown) => QueryBuilder<T>
   insert: (values: unknown) => QueryBuilder<T>
+  in: (column: string, values: unknown[]) => QueryBuilder<T>
   limit: (count: number) => QueryBuilder<T>
   maybeSingle: () => Promise<QueryResult<T>>
   select: (columns?: string) => QueryBuilder<T>
@@ -47,6 +48,11 @@ type PurchaseOrder = {
 }
 
 type Bill = {
+  id: string
+}
+
+type ItemRow = {
+  expense_account_id: string | null
   id: string
 }
 
@@ -115,17 +121,37 @@ export async function POST(
 
     if (billError || !bill) throw new Error(billError?.message || 'Failed to create bill')
 
-    const lineItems = (po.po_line_items ?? []).map((li) => ({
-      company_id: companyId,
-      bill_id: bill.id,
-      item_id: li.item_id ?? null,
-      description: li.description,
-      quantity: li.quantity,
-      rate: li.rate,
-      amount: li.amount,
-      account_id: li.account_id,
-      tax_rate: li.tax_rate ?? 0,
-    }))
+    // Collect item_ids that have no account_id so we can resolve them
+    const unresolvedItemIds = (po.po_line_items ?? [])
+      .filter((li) => !li.account_id && li.item_id)
+      .map((li) => li.item_id as string)
+
+    const itemAccountMap: Record<string, string> = {}
+    if (unresolvedItemIds.length > 0) {
+      const { data: itemRows } = await db.from<ItemRow>('items')
+        .select('id, expense_account_id')
+        .in('id', unresolvedItemIds)
+
+      for (const row of (itemRows ?? []) as ItemRow[]) {
+        if (row.expense_account_id) itemAccountMap[row.id] = row.expense_account_id
+      }
+    }
+
+    const lineItems = (po.po_line_items ?? []).map((li) => {
+      const resolvedAccountId = li.account_id ?? (li.item_id ? itemAccountMap[li.item_id] : undefined) ?? null
+      if (!resolvedAccountId) throw new Error(`Line item "${li.description || li.item_id}" has no expense account assigned. Please edit the PO and assign an account before converting.`)
+      return {
+        company_id: companyId,
+        bill_id: bill.id,
+        item_id: li.item_id ?? null,
+        description: li.description,
+        quantity: li.quantity,
+        rate: li.rate,
+        amount: li.amount,
+        account_id: resolvedAccountId,
+        tax_rate: li.tax_rate ?? 0,
+      }
+    })
 
     if (lineItems.length > 0) {
       const { error: linesError } = await db.from('bill_line_items')

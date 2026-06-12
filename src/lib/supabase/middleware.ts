@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -35,8 +36,13 @@ export async function updateSession(request: NextRequest) {
 
     const path = request.nextUrl.pathname
 
+    const isPublicApprovalRoute =
+        path === '/approve-po' ||
+        path.startsWith('/api/po-approval/')
+
     if (
         !user &&
+        !isPublicApprovalRoute &&
         !path.startsWith('/login') &&
         !path.startsWith('/register') &&
         !path.startsWith('/auth')

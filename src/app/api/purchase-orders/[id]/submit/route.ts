@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { applyWorkflowToPO } from '@/lib/purchase-orders/apply-workflow'
+import { sendExternalApprovalEmailForCurrentStep } from '@/lib/purchase-orders/approval-notifications'
 
 async function getCompanyId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: profile, error } = await (supabase.from('profiles') as any)
@@ -37,11 +39,17 @@ export async function POST(
     }
 
     const { error: updateError } = await (supabase.from('purchase_orders') as any)
-      .update({ status: 'pending_approval' })
+      .update({ status: 'pending_approval', submitted_at: new Date().toISOString() })
       .eq('id', id)
       .eq('company_id', companyId)
 
     if (updateError) throw new Error(updateError.message)
+
+    try {
+      await sendExternalApprovalEmailForCurrentStep(id)
+    } catch (emailError) {
+      console.error('[PO Submit] email send failed:', emailError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

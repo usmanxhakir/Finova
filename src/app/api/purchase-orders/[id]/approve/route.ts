@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { sendExternalApprovalEmailForCurrentStep } from '@/lib/purchase-orders/approval-notifications'
 
 async function getCompanyId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
   const { data: profile, error } = await (supabase.from('profiles') as any)
@@ -72,25 +74,25 @@ export async function POST(
 
     if (updateRecordError) throw new Error(updateRecordError.message)
 
-    // Check if this was the last step
-    const { data: allRecords, error: allRecordsError } = await (supabase.from('po_approval_records') as any)
+    // Check for the next pending step.
+    const { data: nextRecord, error: nextRecordError } = await (supabase.from('po_approval_records') as any)
       .select('step_order')
       .eq('po_id', id)
-
-    if (allRecordsError) throw new Error(allRecordsError.message)
-
-    const maxStepOrder = Math.max(...(allRecords || []).map((r: any) => r.step_order))
+      .eq('status', 'pending')
+      .order('step_order', { ascending: true })
+      .limit(1)
+      .maybeSingle()
     
-    let newStatus = purchaseOrder.status
+    if (nextRecordError) throw new Error(nextRecordError.message)
+
+    let newStatus = 'pending_approval'
     let updatePoData: any = {}
 
-    if (purchaseOrder.current_step_order >= maxStepOrder) {
-      // Last step, fully approved
+    if (!nextRecord) {
       newStatus = 'approved'
       updatePoData = { status: 'approved' }
     } else {
-      // More steps to go
-      updatePoData = { current_step_order: purchaseOrder.current_step_order + 1 }
+      updatePoData = { current_step_order: nextRecord.step_order }
     }
 
     const { error: updatePoError } = await (supabase.from('purchase_orders') as any)
@@ -98,6 +100,14 @@ export async function POST(
       .eq('id', id)
 
     if (updatePoError) throw new Error(updatePoError.message)
+
+    if (nextRecord) {
+      try {
+        await sendExternalApprovalEmailForCurrentStep(id)
+      } catch (emailError) {
+        console.error('[API PO Approve] email send failed:', emailError)
+      }
+    }
 
     return NextResponse.json({ success: true, status: newStatus })
   } catch (error: any) {

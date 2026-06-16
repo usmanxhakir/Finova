@@ -43,6 +43,8 @@ interface PurchaseOrderDetail {
   contacts: { name: string } | null
   po_line_items: PurchaseOrderLineItem[]
   current_step_order: number | null
+  voided_at: string | null
+  void_reason: string | null
 }
 
 interface ApprovalRecord {
@@ -305,6 +307,22 @@ export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderD
                   <span className="text-muted-foreground">Created</span>
                   <span className="font-medium">{formatDate(purchaseOrder.created_at)}</span>
                 </div>
+                {purchaseOrder.status === 'void' && (
+                  <>
+                    {purchaseOrder.voided_at && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground">Voided</span>
+                        <span className="font-medium">{formatDate(purchaseOrder.voided_at)}</span>
+                      </div>
+                    )}
+                    {purchaseOrder.void_reason && (
+                      <div className="space-y-1">
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground">Void Reason</span>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{purchaseOrder.void_reason}</p>
+                      </div>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
 

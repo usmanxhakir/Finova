@@ -31,6 +31,21 @@ export async function GET(
 
     if (!record) return NextResponse.json({ error: 'Invalid or expired link.' }, { status: 404 })
 
+    // Guard against stale links: check the parent PO is still pending_approval
+    const { data: parentPo, error: parentPoError } = await (supabase.from('purchase_orders') as any)
+      .select('status')
+      .eq('id', record.po_id)
+      .limit(1)
+      .maybeSingle()
+
+    if (parentPoError) throw new Error(parentPoError.message)
+    if (!parentPo || parentPo.status !== 'pending_approval') {
+      return NextResponse.json(
+        { error: 'This purchase order is no longer pending approval.' },
+        { status: 410 }
+      )
+    }
+
     if (record.status !== 'pending') {
       return NextResponse.json({
         error: 'This approval link has already been used.',
@@ -91,6 +106,22 @@ export async function POST(
     const { supabase, record } = await getApprovalRecord(token)
 
     if (!record) return NextResponse.json({ error: 'Invalid or expired link.' }, { status: 404 })
+
+    // Guard against stale links: check the parent PO is still pending_approval
+    const { data: parentPo, error: parentPoError } = await (supabase.from('purchase_orders') as any)
+      .select('status')
+      .eq('id', record.po_id)
+      .limit(1)
+      .maybeSingle()
+
+    if (parentPoError) throw new Error(parentPoError.message)
+    if (!parentPo || parentPo.status !== 'pending_approval') {
+      return NextResponse.json(
+        { error: 'This purchase order is no longer pending approval.' },
+        { status: 410 }
+      )
+    }
+
     if (record.status !== 'pending') return NextResponse.json({ error: 'Already decided.' }, { status: 409 })
     if (isExpired(record.token_expires_at)) {
       return NextResponse.json({ error: 'This link has expired.' }, { status: 410 })

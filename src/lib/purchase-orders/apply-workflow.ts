@@ -110,6 +110,7 @@ export async function applyWorkflowToPO(
     const { error: insertError } = await (supabase.from('po_approval_records') as any).insert(approvalRows)
     if (insertError) return { success: false, error: insertError.message }
 
+
     const { error: updatePoError } = await (supabase.from('purchase_orders') as any)
       .update({
         matched_tier_id: matchedTier.id,

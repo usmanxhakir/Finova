@@ -115,6 +115,21 @@ export async function POST(
     if (updateRecordError) throw new Error(updateRecordError.message)
     if (!updatedRecord) return NextResponse.json({ error: 'Already decided.' }, { status: 409 })
 
+    if (trimmedComment) {
+      try {
+        const label = action === 'approve' ? 'Approved' : 'Rejected'
+        await (supabase.from('po_comments') as any).insert({
+          po_id: record.po_id,
+          company_id: record.company_id,
+          user_id: null,
+          author_email: record.approver_email,
+          content: `${label} (${record.step_label}): ${trimmedComment}`,
+        })
+      } catch (commentError) {
+        console.error('[PO Approval POST] comment insert failed:', commentError)
+      }
+    }
+
     if (action === 'reject') {
       const { error: updatePoError } = await (supabase.from('purchase_orders') as any)
         .update({ status: 'rejected' })

@@ -22,27 +22,34 @@ export async function GET(
     }
 
     const { data: comments, error } = await (supabase.from('po_comments') as any)
-      .select('id, content, created_at, user_id')
+      .select('id, content, created_at, user_id, author_email')
       .eq('po_id', poId)
       .eq('company_id', profile.company_id)
       .order('created_at', { ascending: true })
 
     if (error) throw new Error(error.message)
 
-    // Fetch author names for each comment
+    // Fetch author names — skip profile join for external comments (user_id is null)
     const enriched = await Promise.all(
       (comments || []).map(async (comment: any) => {
-        const { data: authorProfile } = await (supabase.from('profiles') as any)
-          .select('full_name')
-          .eq('id', comment.user_id)
-          .limit(1)
-          .maybeSingle()
+        let author: string
+        if (comment.user_id === null || comment.user_id === undefined) {
+          // External approver — no user account in the system
+          author = comment.author_email ? `External — ${comment.author_email}` : 'External'
+        } else {
+          const { data: authorProfile } = await (supabase.from('profiles') as any)
+            .select('full_name')
+            .eq('id', comment.user_id)
+            .limit(1)
+            .maybeSingle()
+          author = authorProfile?.full_name || 'Unknown'
+        }
 
         return {
           id: comment.id,
           content: comment.content,
           created_at: comment.created_at,
-          author: authorProfile?.full_name || 'Unknown',
+          author,
         }
       })
     )

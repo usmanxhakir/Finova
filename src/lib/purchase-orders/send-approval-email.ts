@@ -25,6 +25,10 @@ function escapeHtml(value: string) {
 }
 
 export async function sendApprovalEmail(params: SendApprovalEmailParams) {
+  if (!process.env.RESEND_FROM_EMAIL) {
+    throw new Error('RESEND_FROM_EMAIL environment variable is not set')
+  }
+
   const {
     to,
     approvalToken,
@@ -53,7 +57,7 @@ export async function sendApprovalEmail(params: SendApprovalEmailParams) {
   const safeReviewUrl = escapeHtml(reviewUrl)
 
   await resend.emails.send({
-    from: `${safeCompanyName || 'Fyntrax'} <onboarding@resend.dev>`,
+    from: `${safeCompanyName || 'Fyntrax'} <${process.env.RESEND_FROM_EMAIL}>`,
     to,
     subject: `Action Required: Review Purchase Order ${poNumber}`,
     html: `

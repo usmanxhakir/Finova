@@ -16,6 +16,22 @@ type ApprovalRecord = {
   approver_email: string | null
 }
 
+type TimelineItem = {
+  step_order: number
+  step_label: string
+  status: string
+  decided_at: string | null
+  decision_notes: string | null
+  approver_name: string | null
+}
+
+type CommentItem = {
+  id: string
+  content: string
+  created_at: string
+  author: string
+}
+
 type PurchaseOrderLineItem = {
   id: string
   description: string | null
@@ -69,6 +85,8 @@ export default function ApprovalPageClient() {
   const [state, setState] = useState<PageState>('loading')
   const [poData, setPoData] = useState<PurchaseOrder | null>(null)
   const [recordData, setRecordData] = useState<ApprovalRecord | null>(null)
+  const [timeline, setTimeline] = useState<TimelineItem[]>([])
+  const [comments, setComments] = useState<CommentItem[]>([])
   const [comment, setComment] = useState('')
   const [decidedAction, setDecidedAction] = useState<'approve' | 'reject' | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
@@ -103,6 +121,8 @@ export default function ApprovalPageClient() {
 
         setPoData(data.po)
         setRecordData(data.record)
+        setTimeline(data.timeline ?? [])
+        setComments(data.comments ?? [])
         setState('ready')
       })
       .catch(() => {
@@ -293,6 +313,69 @@ export default function ApprovalPageClient() {
           )}
         </div>
 
+        {/* ── Approval Timeline ──────────────────────────────────────────── */}
+        {timeline.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div className="border-b border-gray-100 px-6 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Approval Timeline</p>
+            </div>
+            <ul className="divide-y divide-gray-50">
+              {timeline.map((item) => (
+                <li key={item.step_order} className="px-6 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-800">{item.step_label}</p>
+                      {item.approver_name && (
+                        <p className="mt-0.5 truncate text-xs text-gray-400">{item.approver_name}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {item.status === 'approved' && (
+                        <Badge className="border-green-200 bg-green-50 text-green-700" variant="outline">Approved</Badge>
+                      )}
+                      {item.status === 'rejected' && (
+                        <Badge variant="destructive">Rejected</Badge>
+                      )}
+                      {item.status === 'pending' && (
+                        <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-600">Pending Approval</Badge>
+                      )}
+                      {item.decided_at && (
+                        <span className="text-xs text-gray-400">{formatDate(item.decided_at)}</span>
+                      )}
+                    </div>
+                  </div>
+                  {item.decision_notes && (
+                    <p className="mt-2 text-xs text-gray-500 italic">{item.decision_notes}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* ── Comment Thread ─────────────────────────────────────────────── */}
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-6 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Comments</p>
+          </div>
+          {comments.length === 0 ? (
+            <p className="px-6 py-4 text-sm text-gray-400">No comments yet.</p>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {comments.map((c) => (
+                <li key={c.id} className="px-6 py-4">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-xs font-semibold text-gray-600">{c.author}</p>
+                    <p className="shrink-0 text-xs text-gray-400">{formatDate(c.created_at)}</p>
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{c.content}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* ── Decision form ──────────────────────────────────────────────── */}
         <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6">
           <p className="text-sm font-medium text-gray-700">
             Comment <span className="font-normal text-gray-400">(required for rejection, optional for approval)</span>

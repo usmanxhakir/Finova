@@ -72,6 +72,73 @@ export async function GET(
     if (poError) throw new Error(poError.message)
     if (!po) return NextResponse.json({ error: 'Purchase order not found.' }, { status: 404 })
 
+    // ── A) Approval timeline ──────────────────────────────────────────────────
+    const { data: approvalRecords, error: arError } = await (supabase.from('po_approval_records') as any)
+      .select('id, step_order, step_label, status, decided_at, decision_notes, approver_user_id, approver_email')
+      .eq('po_id', record.po_id)
+      .order('step_order', { ascending: true })
+
+    if (arError) throw new Error(arError.message)
+
+    const timelineRows: any[] = approvalRecords || []
+
+    // Resolve approver names in bulk (two-step fetch)
+    const approverUserIds = [...new Set(
+      timelineRows.map((r: any) => r.approver_user_id).filter(Boolean)
+    )]
+    let approverProfileMap: Record<string, string> = {}
+    if (approverUserIds.length > 0) {
+      const { data: approverProfiles } = await (supabase.from('profiles') as any)
+        .select('id, full_name')
+        .in('id', approverUserIds)
+      for (const p of approverProfiles || []) {
+        approverProfileMap[p.id] = p.full_name
+      }
+    }
+
+    const timeline = timelineRows.map((r: any) => ({
+      step_order: r.step_order,
+      step_label: r.step_label,
+      status: r.status,
+      decided_at: r.decided_at,
+      decision_notes: r.decision_notes,
+      approver_name: r.approver_user_id
+        ? (approverProfileMap[r.approver_user_id] ?? r.approver_email)
+        : r.approver_email,
+    }))
+
+    // ── B) Comment thread ─────────────────────────────────────────────────────
+    const { data: rawComments, error: commentsError } = await (supabase.from('po_comments') as any)
+      .select('id, content, created_at, user_id, author_email')
+      .eq('po_id', record.po_id)
+      .order('created_at', { ascending: true })
+
+    if (commentsError) throw new Error(commentsError.message)
+
+    const commentRows: any[] = rawComments || []
+
+    const commentUserIds = [...new Set(
+      commentRows.map((c: any) => c.user_id).filter(Boolean)
+    )]
+    let commentProfileMap: Record<string, string> = {}
+    if (commentUserIds.length > 0) {
+      const { data: commentProfiles } = await (supabase.from('profiles') as any)
+        .select('id, full_name')
+        .in('id', commentUserIds)
+      for (const p of commentProfiles || []) {
+        commentProfileMap[p.id] = p.full_name
+      }
+    }
+
+    const comments = commentRows.map((c: any) => ({
+      id: c.id,
+      content: c.content,
+      created_at: c.created_at,
+      author: c.user_id
+        ? (commentProfileMap[c.user_id] ?? 'Unknown')
+        : (c.author_email ? `External — ${c.author_email}` : 'External'),
+    }))
+
     return NextResponse.json({
       record: {
         id: record.id,
@@ -80,6 +147,8 @@ export async function GET(
         approver_email: record.approver_email,
       },
       po,
+      timeline,
+      comments,
     })
   } catch (error) {
     console.error('[PO Approval GET]', error)

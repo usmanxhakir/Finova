@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
@@ -37,7 +38,7 @@ export async function PATCH(
     // Only allow permitted fields
     const allowedFields: Record<string, any> = {}
     if (body.role !== undefined) {
-      if (!['admin', 'accountant', 'viewer'].includes(body.role)) {
+      if (!['admin', 'accountant', 'viewer', 'procurement'].includes(body.role)) {
         return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
       }
       allowedFields.role = body.role

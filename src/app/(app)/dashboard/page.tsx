@@ -1,24 +1,33 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useMemo, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardKPIs } from '@/components/dashboard/DashboardKPIs'
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts'
 import { DashboardRecentActivity } from '@/components/dashboard/DashboardRecentActivity'
 import { startOfMonth, endOfMonth, subMonths, format } from 'date-fns'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { SlidersHorizontal } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ClipboardCheck, ClipboardList, Clock, DollarSign, SlidersHorizontal } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
+import { getAllowedModules } from '@/lib/access/modules'
+
+function normalizeCents(value: number | string | bigint | null | undefined) {
+    if (value == null) return 0
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : 0
+}
 
 export default function DashboardPage() {
-    const supabase = createClient()
-    
+    const supabase = useMemo(() => createClient(), [])
+
     const [showRevenueChart, setShowRevenueChart] = useState(true)
     const [showExpenseChart, setShowExpenseChart] = useState(true)
-    
     const [dashboardData, setDashboardData] = useState<any>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [isProcurementDashboard, setIsProcurementDashboard] = useState(false)
 
-    // Persist to localStorage
     useEffect(() => {
         const saved = localStorage.getItem('dashboard_chart_visibility')
         if (saved) {
@@ -33,16 +42,61 @@ export default function DashboardPage() {
     useEffect(() => {
         localStorage.setItem('dashboard_chart_visibility', JSON.stringify({
             revenue: showRevenueChart,
-            expense: showExpenseChart
+            expense: showExpenseChart,
         }))
     }, [showRevenueChart, showExpenseChart])
 
     useEffect(() => {
         async function fetchDashboardData() {
             setIsLoading(true)
-            
+
             try {
-                // 1. Fetch Outstanding A/R & A/P
+                const { data: { user } } = await supabase.auth.getUser()
+                let allowedModules = getAllowedModules()
+
+                if (user) {
+                    const { data: profile } = await (supabase
+                        .from('profiles') as any)
+                        .select('role, company_id')
+                        .eq('id', user.id)
+                        .maybeSingle()
+
+                    let plan: string | null = null
+                    if (profile?.company_id) {
+                        const { data: company } = await (supabase
+                            .from('companies') as any)
+                            .select('plan')
+                            .eq('id', profile.company_id)
+                            .maybeSingle()
+                        plan = company?.plan ?? null
+                    }
+
+                    allowedModules = getAllowedModules(profile?.role, plan)
+                }
+
+                const canViewFinancials =
+                    allowedModules.has('invoices') &&
+                    allowedModules.has('bills') &&
+                    allowedModules.has('reports')
+
+                setIsProcurementDashboard(!canViewFinancials)
+
+                if (!canViewFinancials) {
+                    const { data: purchaseOrders } = await supabase
+                        .from('purchase_orders')
+                        .select('status, total')
+                        .neq('status', 'void')
+
+                    const poRows = purchaseOrders ?? []
+                    setDashboardData({
+                        totalPOs: poRows.length,
+                        pendingPOs: poRows.filter((po: any) => po.status === 'pending_approval').length,
+                        approvedPOs: poRows.filter((po: any) => po.status === 'approved').length,
+                        totalPOValue: poRows.reduce((sum: number, po: any) => sum + normalizeCents(po.total), 0),
+                    })
+                    return
+                }
+
                 const { data: invoices } = await supabase
                     .from('invoices')
                     .select('amount_due')
@@ -56,7 +110,6 @@ export default function DashboardPage() {
                 const totalAR = (invoices as any)?.reduce((sum: number, inv: any) => sum + (Number(inv.amount_due) || 0), 0) || 0
                 const totalAP = (bills as any)?.reduce((sum: number, bill: any) => sum + (Number(bill.amount_due) || 0), 0) || 0
 
-                // 2. Monthly Revenue & Expenses
                 const now = new Date()
                 const startOfCurrentMonth = format(startOfMonth(now), 'yyyy-MM-dd')
                 const endOfCurrentMonth = format(endOfMonth(now), 'yyyy-MM-dd')
@@ -64,9 +117,9 @@ export default function DashboardPage() {
                 const { data: monthLines } = await supabase
                     .from('journal_entry_lines')
                     .select(`
-                        debit, 
-                        credit, 
-                        accounts!inner(type, name), 
+                        debit,
+                        credit,
+                        accounts!inner(type, name),
                         journal_entries!inner(date)
                     `)
                     .gte('journal_entries.date', startOfCurrentMonth)
@@ -94,14 +147,13 @@ export default function DashboardPage() {
                     .map(([name, value]) => ({ name, value }))
                     .sort((a, b) => b.value - a.value)
 
-                // 3. Last 6 Months Revenue vs Expenses
                 const sixMonthsAgo = format(startOfMonth(subMonths(now, 5)), 'yyyy-MM-dd')
                 const { data: historicLines } = await supabase
                     .from('journal_entry_lines')
                     .select(`
-                        debit, 
-                        credit, 
-                        accounts!inner(type), 
+                        debit,
+                        credit,
+                        accounts!inner(type),
                         journal_entries!inner(date)
                     `)
                     .gte('journal_entries.date', sixMonthsAgo)
@@ -109,7 +161,6 @@ export default function DashboardPage() {
 
                 const monthlyDataMap: Record<string, { revenue: number, expenses: number }> = {}
 
-                // Initialize last 6 months
                 for (let i = 5; i >= 0; i--) {
                     const m = format(subMonths(now, i), 'MMM yyyy')
                     monthlyDataMap[m] = { revenue: 0, expenses: 0 }
@@ -131,11 +182,10 @@ export default function DashboardPage() {
 
                 const chartData = Object.entries(monthlyDataMap).map(([name, data]) => ({
                     name,
-                    revenue: data.revenue / 100, // Show in dollars for chart
-                    expenses: data.expenses / 100
+                    revenue: data.revenue / 100,
+                    expenses: data.expenses / 100,
                 }))
 
-                // 4. Recent Activity
                 const { data: recentInvoices } = await supabase
                     .from('invoices')
                     .select('*, contacts(name)')
@@ -158,17 +208,17 @@ export default function DashboardPage() {
                     expenseBreakdown,
                     chartData,
                     recentInvoices,
-                    recentBills
+                    recentBills,
                 })
             } catch (err) {
-                console.error("Dashboard data fetch error:", err)
+                console.error('Dashboard data fetch error:', err)
             } finally {
                 setIsLoading(false)
             }
         }
-        
+
         fetchDashboardData()
-    }, [])
+    }, [supabase])
 
     if (isLoading) {
         return (
@@ -185,10 +235,6 @@ export default function DashboardPage() {
                         <div key={i} className="h-32 bg-zinc-50 rounded-xl border-2 border-zinc-100 animate-pulse" />
                     ))}
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="h-[400px] bg-zinc-50 rounded-xl border-2 border-zinc-100 animate-pulse" />
-                    <div className="h-[400px] bg-zinc-50 rounded-xl border-2 border-zinc-100 animate-pulse" />
-                </div>
             </div>
         )
     }
@@ -198,63 +244,130 @@ export default function DashboardPage() {
             <div className="flex items-start justify-between mb-6">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-                    <p className="text-gray-500 mt-1">Financial overview and key performance indicators.</p>
-                </div>
-                
-                {/* Customize button — triggers a Popover */}
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
-                        <SlidersHorizontal className="w-4 h-4" />
-                        Customize
-                    </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-56 p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                        Dashboard Charts
+                    <p className="text-gray-500 mt-1">
+                        {isProcurementDashboard
+                            ? 'Purchase order overview and procurement activity.'
+                            : 'Financial overview and key performance indicators.'}
                     </p>
-                    <div className="space-y-2">
-                        <label className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={showRevenueChart}
-                            onChange={e => setShowRevenueChart(e.target.checked)}
-                            className="w-4 h-4 rounded accent-violet-600"
-                        />
-                        <span className="text-sm text-gray-700">Revenue vs Expenses</span>
-                        </label>
-                        <label className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={showExpenseChart}
-                            onChange={e => setShowExpenseChart(e.target.checked)}
-                            className="w-4 h-4 rounded accent-violet-600"
-                        />
-                        <span className="text-sm text-gray-700">Expense Breakdown</span>
-                        </label>
-                    </div>
-                    </PopoverContent>
-                </Popover>
+                </div>
+
+                {!isProcurementDashboard && (
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
+                                <SlidersHorizontal className="w-4 h-4" />
+                                Customize
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-56 p-3">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                Dashboard Charts
+                            </p>
+                            <div className="space-y-2">
+                                <label className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={showRevenueChart}
+                                        onChange={e => setShowRevenueChart(e.target.checked)}
+                                        className="w-4 h-4 rounded accent-violet-600"
+                                    />
+                                    <span className="text-sm text-gray-700">Revenue vs Expenses</span>
+                                </label>
+                                <label className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={showExpenseChart}
+                                        onChange={e => setShowExpenseChart(e.target.checked)}
+                                        className="w-4 h-4 rounded accent-violet-600"
+                                    />
+                                    <span className="text-sm text-gray-700">Expense Breakdown</span>
+                                </label>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                )}
             </div>
 
-            <DashboardKPIs
-                totalAR={dashboardData.totalAR}
-                totalAP={dashboardData.totalAP}
-                revenueThisMonth={dashboardData.revenueThisMonth}
-                expensesThisMonth={dashboardData.expensesThisMonth}
-            />
+            {isProcurementDashboard ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                        {
+                            title: 'Purchase Orders',
+                            value: dashboardData.totalPOs,
+                            description: 'Open purchase orders',
+                            icon: ClipboardList,
+                            color: 'text-indigo-600',
+                            bg: 'bg-indigo-50',
+                            border: 'border-indigo-100',
+                        },
+                        {
+                            title: 'Pending Approval',
+                            value: dashboardData.pendingPOs,
+                            description: 'Awaiting approval',
+                            icon: Clock,
+                            color: 'text-amber-600',
+                            bg: 'bg-amber-50',
+                            border: 'border-amber-100',
+                        },
+                        {
+                            title: 'Approved POs',
+                            value: dashboardData.approvedPOs,
+                            description: 'Ready for fulfillment',
+                            icon: ClipboardCheck,
+                            color: 'text-emerald-600',
+                            bg: 'bg-emerald-50',
+                            border: 'border-emerald-100',
+                        },
+                        {
+                            title: 'PO Value',
+                            value: formatCurrency(dashboardData.totalPOValue),
+                            description: 'Total non-void PO value',
+                            icon: DollarSign,
+                            color: 'text-violet-600',
+                            bg: 'bg-violet-50',
+                            border: 'border-violet-100',
+                        },
+                    ].map((kpi) => (
+                        <Card key={kpi.title} className={`border-2 ${kpi.border} shadow-sm overflow-hidden`}>
+                            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                                <CardTitle className="text-sm font-bold uppercase tracking-wider text-zinc-500">{kpi.title}</CardTitle>
+                                <div className={`p-2 rounded-lg ${kpi.bg} ${kpi.color}`}>
+                                    <kpi.icon className="h-4 w-4" />
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className={`text-2xl font-black tabular-nums ${kpi.color}`}>
+                                    {kpi.value}
+                                </div>
+                                <p className="text-xs text-zinc-400 mt-1 font-medium">
+                                    {kpi.description}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                <>
+                    <DashboardKPIs
+                        totalAR={dashboardData.totalAR}
+                        totalAP={dashboardData.totalAP}
+                        revenueThisMonth={dashboardData.revenueThisMonth}
+                        expensesThisMonth={dashboardData.expensesThisMonth}
+                    />
 
-            <DashboardCharts
-                chartData={dashboardData.chartData}
-                expenseBreakdown={dashboardData.expenseBreakdown.map((e: any) => ({ ...e, value: e.value / 100 }))}
-                showRevenueChart={showRevenueChart}
-                showExpenseChart={showExpenseChart}
-            />
+                    <DashboardCharts
+                        chartData={dashboardData.chartData}
+                        expenseBreakdown={dashboardData.expenseBreakdown.map((e: any) => ({ ...e, value: e.value / 100 }))}
+                        showRevenueChart={showRevenueChart}
+                        showExpenseChart={showExpenseChart}
+                    />
 
-            <DashboardRecentActivity
-                invoices={dashboardData.recentInvoices || []}
-                bills={dashboardData.recentBills || []}
-            />
+                    <DashboardRecentActivity
+                        invoices={dashboardData.recentInvoices || []}
+                        bills={dashboardData.recentBills || []}
+                    />
+                </>
+            )}
         </div>
     )
 }

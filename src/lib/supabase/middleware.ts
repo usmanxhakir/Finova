@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { getAllowedModules, getModuleForPath } from '@/lib/access/modules'
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
@@ -64,7 +65,7 @@ export async function updateSession(request: NextRequest) {
     if (user) {
         const { data: profile } = await (supabase
             .from('profiles') as any)
-            .select('role, is_active')
+            .select('role, is_active, company_id')
             .eq('id', user.id)
             .maybeSingle()
 
@@ -77,6 +78,24 @@ export async function updateSession(request: NextRequest) {
         }
 
         const role = profile?.role
+
+        let plan: string | null = null
+        if (profile?.company_id) {
+            const { data: company } = await (supabase
+                .from('companies') as any)
+                .select('plan')
+                .eq('id', profile.company_id)
+                .maybeSingle()
+            plan = company?.plan ?? null
+        }
+
+        const requestedModule = getModuleForPath(path)
+        if (requestedModule && !getAllowedModules(role, plan).has(requestedModule)) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/dashboard'
+            url.search = ''
+            return NextResponse.redirect(url)
+        }
 
         if (role === 'viewer') {
             const isProtectedAction =

@@ -1,5 +1,6 @@
 'use client'
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -39,6 +40,8 @@ interface TeamMember {
   created_at: string
 }
 
+type AssignableRole = 'accountant' | 'viewer' | 'procurement'
+
 // ─── Role Badge Helpers ────────────────────────────────────────────────────────
 
 function RoleBadge({ role }: { role: string }) {
@@ -47,6 +50,9 @@ function RoleBadge({ role }: { role: string }) {
   }
   if (role === 'admin') {
     return <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100 text-[11px] font-semibold uppercase">Admin</Badge>
+  }
+  if (role === 'procurement') {
+    return <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 text-[11px] font-semibold uppercase">Procurement</Badge>
   }
   return <Badge variant="secondary" className="text-[11px] font-semibold uppercase">Viewer</Badge>
 }
@@ -79,7 +85,7 @@ export function UsersTab({ currentUserProfile }: { currentUserProfile: any }) {
 
   // Invite form state
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'accountant' | 'viewer'>('viewer')
+  const [inviteRole, setInviteRole] = useState<AssignableRole>('viewer')
   const [inviting, setInviting] = useState(false)
 
   // Pending invitations
@@ -220,13 +226,14 @@ export function UsersTab({ currentUserProfile }: { currentUserProfile: any }) {
               />
               <Select
                 value={inviteRole}
-                onValueChange={v => setInviteRole(v as 'accountant' | 'viewer')}
+                onValueChange={v => setInviteRole(v as AssignableRole)}
               >
                 <SelectTrigger id="invite-role" className="w-full sm:w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="accountant">Accountant</SelectItem>
+                  <SelectItem value="procurement">Procurement</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
@@ -362,6 +369,7 @@ export function UsersTab({ currentUserProfile }: { currentUserProfile: any }) {
                               <SelectContent>
                                 <SelectItem value="admin">Admin</SelectItem>
                                 <SelectItem value="accountant">Accountant</SelectItem>
+                                <SelectItem value="procurement">Procurement</SelectItem>
                                 <SelectItem value="viewer">Viewer</SelectItem>
                               </SelectContent>
                             </Select>

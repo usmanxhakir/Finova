@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Database } from '@/types/database.types'
+import { canAccessPurchaseOrders } from '@/lib/access/modules'
 
 interface StudioGateProps {
   children: React.ReactNode
@@ -49,9 +49,9 @@ export async function StudioGate({ children }: StudioGateProps) {
     .select('plan')
     .eq('id', profile.company_id)
     .limit(1)
-    .maybeSingle() as { data: { plan: 'free' | 'pro' | 'studio' } | null }
+    .maybeSingle() as { data: { plan: string } | null }
 
-  if (company?.plan === 'studio') {
+  if (canAccessPurchaseOrders(company?.plan)) {
     return <>{children}</>
   }
 

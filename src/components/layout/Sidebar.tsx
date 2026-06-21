@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,6 @@ import {
     BarChart3,
     Settings,
     ChevronLeft,
-    ChevronRight,
     ChevronDown,
     ArrowRightLeft,
     ClipboardList,
@@ -30,9 +30,10 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+import { getAllowedModules, type ModuleId } from "@/lib/access/modules"
 import {
     Tooltip,
     TooltipContent,
@@ -57,15 +58,15 @@ const PULSE_STYLE = `
 `;
 
 // ─── Nav data ─────────────────────────────────────────────────────────────────
-const navItems = [
-    { name: "AI Agent",   href: "/agent",     icon: Sparkles,       badge: "Beta", isAgent: true },
-    { name: "Dashboard",  href: "/dashboard", icon: LayoutDashboard },
-    { name: "Invoices",   href: "/invoices",  icon: FileText },
-    { name: "Bills",      href: "/bills",     icon: Receipt },
-    { name: "Purchase Orders", href: "/purchase-orders", icon: ClipboardList },
-    { name: "Expenses",   href: "/expenses",  icon: CreditCard },
-    { name: "Contacts",   href: "/contacts",  icon: Users },
-    { name: "Items",      href: "/items",     icon: Package },
+const navItems: Array<{ name: string; href: string; icon: any; module: ModuleId; badge?: string; isAgent?: boolean }> = [
+    { name: "AI Agent",   href: "/agent",     icon: Sparkles,       badge: "Beta", isAgent: true, module: 'agent' },
+    { name: "Dashboard",  href: "/dashboard", icon: LayoutDashboard, module: 'dashboard' },
+    { name: "Invoices",   href: "/invoices",  icon: FileText, module: 'invoices' },
+    { name: "Bills",      href: "/bills",     icon: Receipt, module: 'bills' },
+    { name: "Purchase Orders", href: "/purchase-orders", icon: ClipboardList, module: 'purchase_orders' },
+    { name: "Expenses",   href: "/expenses",  icon: CreditCard, module: 'expenses' },
+    { name: "Contacts",   href: "/contacts",  icon: Users, module: 'contacts' },
+    { name: "Items",      href: "/items",     icon: Package, module: 'items' },
 ];
 
 const reportSubItems = [
@@ -76,11 +77,34 @@ const reportSubItems = [
     { name: "Transaction List", href: "/reports/transactions" },
 ];
 
+const newMenuItems: Array<{ name: string; href: string; icon: any; module: ModuleId }> = [
+    { name: "New Invoice", href: "/invoices/new", icon: FileText, module: 'invoices' },
+    { name: "New Bill", href: "/bills/new", icon: Receipt, module: 'bills' },
+    { name: "New Purchase Order", href: "/purchase-orders/new", icon: ClipboardList, module: 'purchase_orders' },
+    { name: "New Expense", href: "/expenses", icon: CreditCard, module: 'expenses' },
+    { name: "New Journal Entry", href: "/journal-entries/new", icon: ClipboardList, module: 'journal_entries' },
+    { name: "Pay Bills", href: "/pay-bills", icon: ArrowRightLeft, module: 'payments' },
+    { name: "Receive Payment", href: "/receive-payments", icon: Landmark, module: 'payments' },
+];
+
 // ─── Component ────────────────────────────────────────────────────────────────
-export function Sidebar() {
+interface SidebarProps {
+    role?: string | null
+    plan?: string | null
+}
+
+export function Sidebar({ role, plan }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter()
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
+    const allowedModules = useMemo(() => getAllowedModules(role, plan), [role, plan])
+    const visibleNavItems = navItems.filter((item) => allowedModules.has(item.module))
+    const visibleNewMenuItems = newMenuItems.filter((item) => allowedModules.has(item.module))
+    const showAccountingSection =
+        allowedModules.has('accounts') ||
+        allowedModules.has('journal_entries') ||
+        allowedModules.has('banking')
+    const showAnalysisSection = allowedModules.has('reports')
     const [collapsed, setCollapsed] = useState(false);
     const [reportsExpanded, setReportsExpanded] = useState(false);
     const [hasUnreconciled, setHasUnreconciled] = useState(false);
@@ -121,6 +145,8 @@ export function Sidebar() {
     }
 
     useEffect(() => {
+        if (!allowedModules.has('banking')) return
+
         async function checkUnreconciled() {
             try {
                 const res = await fetch('/api/reconciliation/accounts');
@@ -135,7 +161,7 @@ export function Sidebar() {
             }
         }
         checkUnreconciled();
-    }, []);
+    }, [allowedModules]);
 
     // ── Shared active/inactive classes ────────────────────────────────────────
     const activeItem = "bg-violet-50 text-[#6d28d9] border border-violet-100/80";
@@ -242,49 +268,17 @@ export function Sidebar() {
                             side={collapsed ? "right" : "bottom"}
                             className="w-56 p-2 rounded-xl border-violet-100 shadow-xl"
                         >
-                            <Link href="/invoices/new">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <FileText className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>New Invoice</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <Link href="/bills/new">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <Receipt className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>New Bill</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <Link href="/purchase-orders/new">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <ClipboardList className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>New Purchase Order</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <Link href="/expenses">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <CreditCard className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>New Expense</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <Link href="/journal-entries/new">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <ClipboardList className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>New Journal Entry</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <div className="h-px bg-zinc-100 my-1 mx-1" />
-                            <Link href="/pay-bills">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <ArrowRightLeft className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>Pay Bills</span>
-                                </DropdownMenuItem>
-                            </Link>
-                            <Link href="/receive-payments">
-                                <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
-                                    <Landmark className="mr-2 h-4 w-4 text-zinc-400" />
-                                    <span>Receive Payment</span>
-                                </DropdownMenuItem>
-                            </Link>
+                            {visibleNewMenuItems.map((item, index) => (
+                                <div key={item.name}>
+                                    {index === 5 && <div className="h-px bg-zinc-100 my-1 mx-1" />}
+                                    <Link href={item.href}>
+                                        <DropdownMenuItem className="cursor-pointer rounded-lg focus:bg-violet-50 focus:text-violet-700 py-2.5">
+                                            <item.icon className="mr-2 h-4 w-4 text-zinc-400" />
+                                            <span>{item.name}</span>
+                                        </DropdownMenuItem>
+                                    </Link>
+                                </div>
+                            ))}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
@@ -293,14 +287,15 @@ export function Sidebar() {
                 <nav className="flex-1 px-2 pb-2 space-y-0.5 overflow-y-auto">
 
                     {/* Main nav items */}
-                    {navItems.map((item: any) => {
+                    {visibleNavItems.map((item) => {
                         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                        const showActive = isActive || Boolean(item.isAgent)
 
                         if (collapsed) {
                             return (
                                 <Tooltip key={item.name}>
                                     <TooltipTrigger asChild>
-                                        <Link href={item.href} className={collapsedItem(isActive || item.isAgent)}>
+                                        <Link href={item.href} className={collapsedItem(showActive)}>
                                             <item.icon size={18} />
                                         </Link>
                                     </TooltipTrigger>
@@ -315,9 +310,9 @@ export function Sidebar() {
                             <Link
                                 key={item.name}
                                 href={item.href}
-                                className={navLinkClass(isActive || item.isAgent)}
+                                className={navLinkClass(showActive)}
                             >
-                                <div className={iconBoxClass(isActive || item.isAgent)}>
+                                <div className={iconBoxClass(showActive)}>
                                     <item.icon size={16} />
                                 </div>
                                 <span>{item.name}</span>
@@ -331,7 +326,7 @@ export function Sidebar() {
                     })}
 
                     {/* ── ACCOUNTING section ────────────────────────────── */}
-                    {collapsed ? (
+                    {showAccountingSection && (collapsed ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="flex items-center justify-center my-3 cursor-default">
@@ -350,10 +345,10 @@ export function Sidebar() {
                                 Accounting
                             </p>
                         </div>
-                    )}
+                    ))}
 
                     {/* Chart of Accounts */}
-                    {(() => {
+                    {allowedModules.has('accounts') && (() => {
                         const isActive = pathname === "/accounts" || pathname.startsWith("/accounts/");
                         return collapsed ? (
                             <Tooltip>
@@ -375,7 +370,7 @@ export function Sidebar() {
                     })()}
 
                     {/* Journal Entries */}
-                    {(() => {
+                    {allowedModules.has('journal_entries') && (() => {
                         const isActive = pathname === "/journal-entries" || pathname.startsWith("/journal-entries/");
                         return collapsed ? (
                             <Tooltip>
@@ -397,7 +392,7 @@ export function Sidebar() {
                     })()}
 
                     {/* Banking — with pulsing dot + count badge */}
-                    {(() => {
+                    {allowedModules.has('banking') && (() => {
                         const isActive = pathname === "/banking" || pathname.startsWith("/banking/");
                         return collapsed ? (
                             <Tooltip>
@@ -436,7 +431,7 @@ export function Sidebar() {
                     })()}
 
                     {/* ── ANALYSIS section ─────────────────────────────── */}
-                    {collapsed ? (
+                    {showAnalysisSection && (collapsed ? (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <div className="flex items-center justify-center my-3 cursor-default">
@@ -455,10 +450,10 @@ export function Sidebar() {
                                 Analysis
                             </p>
                         </div>
-                    )}
+                    ))}
 
                     {/* Reports accordion */}
-                    {(() => {
+                    {allowedModules.has('reports') && (() => {
                         const isActive = pathname === "/reports" || pathname.startsWith("/reports/");
                         return collapsed ? (
                             <Tooltip>
@@ -523,7 +518,7 @@ export function Sidebar() {
                     })()}
 
                     {/* Settings */}
-                    {(() => {
+                    {allowedModules.has('settings') && (() => {
                         const isActive = pathname === "/settings" || pathname.startsWith("/settings/");
                         return collapsed ? (
                             <Tooltip>

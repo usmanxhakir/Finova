@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type Database = {
   public: {
     Tables: {
@@ -8,7 +9,7 @@ export type Database = {
           created_at: string
           updated_at: string
           full_name: string | null
-          role: 'admin' | 'accountant' | 'viewer'
+          role: 'admin' | 'accountant' | 'viewer' | 'procurement'
           avatar_url: string | null
           is_active: boolean
         }
@@ -18,7 +19,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           full_name?: string | null
-          role?: 'admin' | 'accountant' | 'viewer'
+          role?: 'admin' | 'accountant' | 'viewer' | 'procurement'
           avatar_url?: string | null
           is_active?: boolean
         }
@@ -28,7 +29,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           full_name?: string | null
-          role?: 'admin' | 'accountant' | 'viewer'
+          role?: 'admin' | 'accountant' | 'viewer' | 'procurement'
           avatar_url?: string | null
           is_active?: boolean
         }
@@ -48,7 +49,7 @@ export type Database = {
           created_at: string
           updated_at: string
           name: string
-          plan: 'free' | 'pro' | 'studio'
+          plan: 'free' | 'pro' | 'studio' | 'po_only'
           owner_id: string
         }
         Insert: {
@@ -56,7 +57,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           name: string
-          plan?: 'free' | 'pro' | 'studio'
+          plan?: 'free' | 'pro' | 'studio' | 'po_only'
           owner_id: string
         }
         Update: {
@@ -64,7 +65,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           name?: string
-          plan?: 'free' | 'pro' | 'studio'
+          plan?: 'free' | 'pro' | 'studio' | 'po_only'
           owner_id?: string
         }
         Relationships: []

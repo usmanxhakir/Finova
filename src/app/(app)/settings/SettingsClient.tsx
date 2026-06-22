@@ -33,7 +33,7 @@ export function SettingsClient({ initialCompanySettings, userProfile }: Settings
             </div>
 
             <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 max-w-md">
+                <TabsList className={`grid w-full max-w-lg ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
                     <TabsTrigger value="company" className="flex items-center gap-2">
                         <Building2 className="h-4 w-4" />
                         Company Settings

@@ -19,7 +19,7 @@ async function fetchPurchaseOrder(supabase: Awaited<ReturnType<typeof createClie
     .select(`
       *,
       contacts!purchase_orders_contact_id_fkey(name),
-      po_line_items(*)
+      po_line_items(*, items(name))
     `)
     .eq('id', id)
     .eq('company_id', companyId)

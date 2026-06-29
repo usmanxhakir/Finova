@@ -87,7 +87,13 @@ export async function POST(request: Request) {
 
     // 5. Journal Entry if status is not 'draft'
     if (status !== 'draft') {
-      await createInvoiceJournalEntry(supabase, invoice.id, companyId)
+      try {
+        await createInvoiceJournalEntry(supabase, invoice.id, companyId)
+      } catch (err: any) {
+        await (supabase.from('invoice_line_items') as any).delete().eq('invoice_id', invoice.id)
+        await (supabase.from('invoices') as any).delete().eq('id', invoice.id)
+        throw new Error(`Journal entry failed, invoice was not saved: ${err.message}`)
+      }
     }
 
     return Response.json({ id: invoice.id })

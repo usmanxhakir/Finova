@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { createExpenseJournalEntry } from '@/lib/accounting/journal-engine'
+import { createExpenseJournalEntry, voidExpenseJournalEntries } from '@/lib/accounting/journal-engine'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 
 
@@ -79,7 +79,11 @@ export async function handleSaveExpense(formData: FormData) {
         try {
             await createExpenseJournalEntry(supabase, resultId, companyId)
         } catch (err: any) {
-            console.error('Journal entry creation failed for expense:', err)
+            if (!id) {
+                // New expense — roll back
+                await (supabase.from('expenses') as any).delete().eq('id', resultId)
+            }
+            throw new Error(`Journal entry failed, expense was not saved: ${err.message}`)
         }
     }
 
@@ -89,6 +93,7 @@ export async function handleSaveExpense(formData: FormData) {
 
 export async function handleDeleteExpense(id: string) {
     const supabase = await createClient()
+    const companyId = await getCompanyId()
 
     // In a real app, we should probably void or check for journal entries.
     // The instructions say "Never allow deletion of a finalized invoice or bill — use void + reversal instead".
@@ -102,9 +107,11 @@ export async function handleDeleteExpense(id: string) {
 
     if (error) throw new Error(`Failed to void expense: ${error.message}`)
 
-    // Create a reversal? The journal-engine doesn't have voidExpenseJournalEntries yet.
-    // For now, simple update is what's required by "Void Invoice: Requires confirmation. Reverses all journal entries."
-    // I should probably add voidExpenseJournalEntries to journal-engine.ts too.
+    try {
+        await voidExpenseJournalEntries(supabase, id, companyId)
+    } catch (err) {
+        console.error('Expense journal reversal failed:', err)
+    }
 
     revalidatePath('/expenses')
     return { success: true }

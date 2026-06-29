@@ -91,7 +91,9 @@ export async function POST(request: Request) {
       try {
         await createBillJournalEntry(supabase, bill.id, companyId)
       } catch (err: any) {
-        console.error('[API Bills] journal entry failed:', err)
+        await (supabase.from('bill_line_items') as any).delete().eq('bill_id', bill.id)
+        await (supabase.from('bills') as any).delete().eq('id', bill.id)
+        throw new Error(`Journal entry failed, bill was not saved: ${err.message}`)
       }
     }
 

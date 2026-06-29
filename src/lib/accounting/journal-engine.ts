@@ -40,6 +40,16 @@ export async function createInvoiceJournalEntry(
 
     const invoice = rawInvoice as InvoiceWithLines
 
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id')
+        .eq('source_type', 'invoice')
+        .eq('source_id', invoiceId)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (existing) return existing
+
     if (invoice.status === 'draft' || invoice.status === 'void') {
         throw new Error(`Cannot create journal entry for invoice in status: ${invoice.status}`)
     }
@@ -244,12 +254,6 @@ export async function voidInvoiceJournalEntries(
             status: 'void'
         })
         .eq('id', invoiceId)
-
-    // Re-fetch total to set amount_due correctly
-    const { data: invData } = await (supabase.from('invoices') as any).select('total').eq('id', invoiceId).single()
-    if (invData) {
-        await (supabase.from('invoices') as any).update({ amount_due: invData.total }).eq('id', invoiceId)
-    }
 
     if (invoiceUpdateError) {
         throw new Error(`Failed to update invoice status: ${invoiceUpdateError.message}`)
@@ -568,12 +572,6 @@ export async function voidBillJournalEntries(
         })
         .eq('id', billId)
 
-    // Re-fetch total to set amount_due correctly
-    const { data: billData } = await (supabase.from('bills') as any).select('total').eq('id', billId).single()
-    if (billData) {
-        await (supabase.from('bills') as any).update({ amount_due: billData.total }).eq('id', billId)
-    }
-
     if (billUpdateError) {
         throw new Error(`Failed to update bill status: ${billUpdateError.message}`)
     }
@@ -683,6 +681,23 @@ export async function createExpenseJournalEntry(
         throw new Error(`Cannot create journal entry for voided expense`)
     }
 
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id')
+        .eq('source_type', 'expense')
+        .eq('source_id', expenseId)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (existing) {
+        await (supabase.from('journal_entry_lines') as any)
+            .delete()
+            .eq('journal_entry_id', existing.id)
+        await (supabase.from('journal_entries') as any)
+            .delete()
+            .eq('id', existing.id)
+    }
+
     // 2. Prepare journal entry
     const { data: journalEntry, error: jeError } = await (supabase
         .from('journal_entries') as any)
@@ -742,4 +757,82 @@ export async function createExpenseJournalEntry(
     }
 
     return journalEntry
+}
+
+export async function voidExpenseJournalEntries(
+    supabase: SupabaseClient<Database>,
+    expenseId: string,
+    companyId: string
+) {
+    const { data: existing, error: fetchError } = await (supabase
+        .from('journal_entries') as any)
+        .select('*')
+        .eq('source_type', 'expense')
+        .eq('source_id', expenseId)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (fetchError) {
+        throw new Error(`Failed to fetch expense journal entry: ${fetchError.message}`)
+    }
+
+    if (!existing) return
+
+    const { data: lines, error: linesFetchError } = await (supabase
+        .from('journal_entry_lines') as any)
+        .select('*')
+        .eq('journal_entry_id', existing.id)
+
+    if (linesFetchError || !lines) {
+        throw new Error(`Failed to fetch expense journal entry lines: ${linesFetchError?.message}`)
+    }
+
+    const reversalLines = (lines as any[]).map(line => ({
+        company_id: companyId,
+        account_id: line.account_id,
+        description: `REVERSAL: ${line.description}`,
+        debit: line.credit,
+        credit: line.debit
+    }))
+
+    const totalDebits = reversalLines.reduce((sum, l) => sum + Number(l.debit || 0), 0)
+    const totalCredits = reversalLines.reduce((sum, l) => sum + Number(l.credit || 0), 0)
+
+    if (totalDebits !== totalCredits) {
+        throw new Error(`Reversal journal entry for expense ${expenseId} is unbalanced. Debits: ${totalDebits}, Credits: ${totalCredits}`)
+    }
+
+    const { data: reversalEntry, error: reversalError } = await (supabase
+        .from('journal_entries') as any)
+        .insert({
+            company_id: companyId,
+            date: new Date().toISOString().split('T')[0],
+            reference: existing.reference,
+            description: `Void: ${existing.description}`,
+            is_system_generated: true,
+            source_type: 'expense',
+            source_id: expenseId
+        })
+        .select()
+        .single()
+
+    if (reversalError || !reversalEntry) {
+        throw new Error(`Failed to create expense reversal entry: ${reversalError?.message}`)
+    }
+
+    const reversalEntryId = (reversalEntry as any).id
+
+    const reversalLinesWithEntry = reversalLines.map(line => ({
+        ...line,
+        journal_entry_id: reversalEntryId
+    }))
+
+    const { error: linesError } = await (supabase
+        .from('journal_entry_lines') as any)
+        .insert(reversalLinesWithEntry)
+
+    if (linesError) {
+        throw new Error(`Failed to create expense reversal lines: ${linesError.message}`)
+    }
 }

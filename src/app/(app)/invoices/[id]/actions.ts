@@ -37,8 +37,18 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
     const updateData: any = { sent_at: new Date().toISOString() }
     if (invoice.status === 'draft') {
         updateData.status = 'sent'
-        // If it was draft, we also need to create journal entry as it's now "finalized" by sending
+
+        const { error: updateError } = await (supabase.from('invoices') as any)
+            .update(updateData)
+            .eq('id', id)
+
+        if (updateError) throw new Error(`Failed to update invoice sent status: ${updateError.message}`)
+
         await createInvoiceJournalEntry(supabase, id, companyId)
+
+        revalidatePath(`/invoices/${id}`)
+        revalidatePath('/invoices')
+        return
     }
 
     const { error: updateError } = await (supabase.from('invoices') as any)

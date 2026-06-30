@@ -51,10 +51,10 @@ export default function NewBillPage() {
 
     const onSave = async (values: any, isFinalize: boolean) => {
         const result = await handleSaveBill(values, isFinalize)
-        // handleSaveBill returns a result object on error, or void (then redirects) on success
         if (result && result.success === false) {
-            throw new Error(result.errorCode)
+            throw new Error(result.message || result.errorCode)
         }
+        router.push('/bills')
     }
 
     return (

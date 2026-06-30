@@ -2,13 +2,11 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
-import { redirect } from 'next/navigation'
 import { createBillJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveBill(values: any, isFinalize: boolean): Promise<{ success: false, errorCode: string, message?: string } | void> {
+export async function handleSaveBill(values: any, isFinalize: boolean): Promise<{ success: false; errorCode: string; message?: string } | { success: true; id: string }> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
-    let redirectPath: string | null = null
 
     try {
         // 1. Generate Bill Number
@@ -82,11 +80,9 @@ export async function handleSaveBill(values: any, isFinalize: boolean): Promise<
             }
         }
 
-        redirectPath = '/bills'
+        return { success: true, id: bill.id }
     } catch (err: any) {
         console.error('Bill creation failed:', err)
         return { success: false, errorCode: 'SERVER_ERROR' }
     }
-
-    if (redirectPath) redirect(redirectPath)
 }

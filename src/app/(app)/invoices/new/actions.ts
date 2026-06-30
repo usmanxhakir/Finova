@@ -2,10 +2,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
-import { redirect } from 'next/navigation'
 import { createInvoiceJournalEntry } from '@/lib/accounting/journal-engine'
 
-export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | void> {
+export async function handleSaveInvoice(values: any, isFinalize: boolean, settings: any): Promise<{ success: false; errorCode: string; message?: string } | { success: true; id: string }> {
     const supabase = await createClient()
     const companyId = await getCompanyId()
 
@@ -88,11 +87,11 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
                 // We keep the invoice but log the error
             }
         }
+
+        return { success: true, id: invoice.id }
     } catch (error) {
         console.error('[create-invoice] error:', error)
         return { success: false, errorCode: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) }
     }
 
-    // redirect() must be called OUTSIDE try/catch — it throws NEXT_REDIRECT internally
-    redirect('/invoices')
 }

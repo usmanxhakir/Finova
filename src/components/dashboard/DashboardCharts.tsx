@@ -53,7 +53,7 @@ export function DashboardCharts({
                         <p className="text-sm text-zinc-400 font-medium">Monthly trend for the last 6 months</p>
                     </CardHeader>
                     <CardContent className="h-[400px] min-w-0">
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                        <ResponsiveContainer width="100%" height={400} minWidth={0}>
                             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis
@@ -117,7 +117,7 @@ export function DashboardCharts({
                                 <p>No expenses recorded this month.</p>
                             </div>
                         ) : (
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                            <ResponsiveContainer width="100%" height={400} minWidth={0}>
                                 <PieChart margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
                                     <Pie
                                         data={expenseBreakdown}

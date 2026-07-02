@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { formatCurrency, cn } from '@/lib/utils'
 import { format } from 'date-fns'
-import { handleUpdateInvoice, handleVoidInvoice, handleRecordInvoicePayment } from './actions'
+import { handleUpdateInvoice, handleVoidInvoice, handleRecordInvoicePayment, handleEditInvoicePayment, handleDeleteInvoicePayment } from './actions'
+import { EditPaymentModal } from '@/components/invoices/EditPaymentModal'
 import { ArrowLeft, Ban } from 'lucide-react'
 import Link from 'next/link'
 import { useUserRole } from '@/hooks/useUserRole'
@@ -48,7 +49,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     const loadInvoice = async () => {
         try {
             const { data: invData } = await supabase.from('invoices')
-                .select('*, contacts(*), invoice_line_items(*)')
+                .select('*, contacts(*), invoice_line_items(*), payment_allocations(*, payments(*))')
                 .eq('id', id)
                 .single()
 
@@ -71,7 +72,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     { data: settData },
                     { data: bankData }
                 ] = await Promise.all([
-                    supabase.from('invoices').select('*, contacts(*), invoice_line_items(*)').eq('id', id).single(),
+                    supabase.from('invoices').select('*, contacts(*), invoice_line_items(*), payment_allocations(*, payments(*))').eq('id', id).single(),
                     supabase.from('contacts').select('id, name').in('type', ['customer', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
@@ -102,7 +103,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading invoice...</div>
     if (!invoice) return null
 
-    const isLocked = invoice.status !== 'draft'
+    const isLocked = invoice.status === 'void'
 
     const onSave = async (values: any, isFinalize: boolean) => {
         await handleUpdateInvoice(id, values, isFinalize, invoice.status, Number(invoice.amount_due))
@@ -217,121 +218,83 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </div>
 
-            {isLocked ? (
-                <Card>
+            <InvoiceForm
+                initialData={{
+                    number: invoice.number,
+                    contact_id: invoice.contact_id,
+                    issue_date: invoice.issue_date,
+                    due_date: invoice.due_date,
+                    notes: invoice.notes,
+                    terms: invoice.terms,
+                    footer: invoice.footer,
+                    line_items: (invoice.invoice_line_items as any[]).map((li: any) => ({
+                        ...li,
+                        quantity: Number(li.quantity),
+                        rate: Number(li.rate) / 100,
+                        amount: Number(li.amount) / 100,
+                        tax_rate: Number(li.tax_rate || 0)
+                    })),
+                    subtotal: Number(invoice.subtotal) / 100,
+                    tax_amount: Number(invoice.tax_amount) / 100,
+                    discount_amount: Number(invoice.discount_amount) / 100,
+                    total: Number(invoice.total) / 100
+                }}
+                customers={customers}
+                items={items}
+                accounts={accounts}
+                nextNumber={invoice.number}
+                onSave={onSave}
+                onBack={() => router.push('/invoices')}
+                isPosted={invoice.status !== 'draft'}
+                isVoid={invoice.status === 'void'}
+            />
+
+            {invoice.payment_allocations && invoice.payment_allocations.length > 0 && (
+                <Card className="mt-8">
                     <CardHeader>
-                        <CardTitle>Invoice Details</CardTitle>
+                        <CardTitle>Payment History</CardTitle>
                     </CardHeader>
-                    <CardContent className={cn(
-                        "space-y-6",
-                        invoice.status === 'void' && "opacity-60 grayscale-[0.3]"
-                    )}>
-                        <div className="grid grid-cols-2 gap-8">
-                            <div>
-                                <h4 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">Customer</h4>
-                                <p className="mt-1 text-lg font-medium">{(invoice.contacts as any)?.name}</p>
-                                <p className="text-zinc-600 dark:text-zinc-400">
-                                    {(invoice.contacts as any)?.billing_address}<br />
-                                    {(invoice.contacts as any)?.billing_city}, {(invoice.contacts as any)?.billing_state} {(invoice.contacts as any)?.billing_zip}
-                                </p>
-                            </div>
-                            <div className="text-right">
-                                <h4 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">Dates</h4>
-                                <p className="mt-1">
-                                    <span className="font-medium">Issued:</span> {format(new Date(invoice.issue_date), 'MMM d, yyyy')}
-                                </p>
-                                <p>
-                                    <span className="font-medium">Due:</span> {format(new Date(invoice.due_date), 'MMM d, yyyy')}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="rounded-md border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead className="text-right w-[100px]">Qty</TableHead>
-                                        <TableHead className="text-right w-[150px]">Rate</TableHead>
-                                        <TableHead className="text-right w-[150px]">Amount</TableHead>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Reference</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                    <TableHead className="w-[100px]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {invoice.payment_allocations.map((alloc: any) => (
+                                    <TableRow key={alloc.id}>
+                                        <TableCell>{format(new Date(alloc.payments.date), 'MMM d, yyyy')}</TableCell>
+                                        <TableCell>{alloc.payments.reference || '-'}</TableCell>
+                                        <TableCell className="text-right">{formatCurrency(alloc.amount_applied)}</TableCell>
+                                        <TableCell>
+                                            {!isViewer && invoice.status !== 'void' && (
+                                                <EditPaymentModal
+                                                    payment={alloc.payments}
+                                                    invoiceNumber={invoice.number}
+                                                    bankAccounts={bankAccounts}
+                                                    onEdit={async (values) => {
+                                                        await handleEditInvoicePayment(invoice.id, alloc.payment_id, values, invoice.contact_id)
+                                                        await loadInvoice()
+                                                        router.refresh()
+                                                    }}
+                                                    onDelete={async () => {
+                                                        await handleDeleteInvoicePayment(invoice.id, alloc.payment_id)
+                                                        await loadInvoice()
+                                                        router.refresh()
+                                                    }}
+                                                />
+                                            )}
+                                        </TableCell>
                                     </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {(invoice.invoice_line_items as any[]).map((item: any) => (
-                                        <TableRow key={item.id}>
-                                            <TableCell>{item.description}</TableCell>
-                                            <TableCell className="text-right">{item.quantity}</TableCell>
-                                            <TableCell className="text-right">{formatCurrency(item.rate)}</TableCell>
-                                            <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-
-                        <div className="flex justify-end pt-4">
-                            <div className="w-[350px] space-y-2">
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-500">Subtotal</span>
-                                    <span>{formatCurrency(invoice.subtotal)}</span>
-                                </div>
-                                {Number(invoice.discount_amount) > 0 && (
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Discount</span>
-                                        <span>-{formatCurrency(invoice.discount_amount)}</span>
-                                    </div>
-                                )}
-                                {Number(invoice.tax_amount) > 0 && (
-                                    <div className="flex justify-between">
-                                        <span className="text-zinc-500">Tax</span>
-                                        <span>{formatCurrency(invoice.tax_amount)}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between font-bold text-xl pt-2 border-t">
-                                    <span>Total</span>
-                                    <span className="text-primary">{formatCurrency(invoice.total)}</span>
-                                </div>
-                                <div className="flex justify-between font-medium pt-2 text-zinc-500">
-                                    <span>Paid</span>
-                                    <span>{formatCurrency(invoice.amount_paid)}</span>
-                                </div>
-                                <div className="flex justify-between font-bold text-lg pt-2 border-t mt-2">
-                                    <span>Balance Due</span>
-                                    <span>{formatCurrency(invoice.amount_due)}</span>
-                                </div>
-                            </div>
-                        </div>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </CardContent>
                 </Card>
-            ) : (
-                <InvoiceForm
-                    initialData={{
-                        number: invoice.number,
-                        contact_id: invoice.contact_id,
-                        issue_date: invoice.issue_date,
-                        due_date: invoice.due_date,
-                        notes: invoice.notes,
-                        terms: invoice.terms,
-                        footer: invoice.footer,
-                        line_items: (invoice.invoice_line_items as any[]).map((li: any) => ({
-                            ...li,
-                            quantity: Number(li.quantity),
-                            rate: Number(li.rate) / 100,
-                            amount: Number(li.amount) / 100,
-                            tax_rate: Number(li.tax_rate || 0)
-                        })),
-                        subtotal: Number(invoice.subtotal) / 100,
-                        tax_amount: Number(invoice.tax_amount) / 100,
-                        discount_amount: Number(invoice.discount_amount) / 100,
-                        total: Number(invoice.total) / 100
-                    }}
-                    customers={customers}
-                    items={items}
-                    accounts={accounts}
-                    nextNumber={invoice.number}
-                    onSave={onSave}
-                    onBack={() => router.push('/invoices')}
-                />
             )}
 
             {invoice && (

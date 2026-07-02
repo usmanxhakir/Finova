@@ -90,7 +90,8 @@ interface InvoiceFormProps {
     nextNumber: string
     onSave: (data: InvoiceFormValues, isFinalize: boolean) => Promise<void>
     isLoading?: boolean
-    isLocked?: boolean
+    isPosted?: boolean
+    isVoid?: boolean
     /** Called when the user wants to navigate back (after dirty-check passes) */
     onBack?: () => void
 }
@@ -103,7 +104,8 @@ export function InvoiceForm({
     nextNumber,
     onSave,
     isLoading,
-    isLocked = false,
+    isPosted = false,
+    isVoid = false,
     onBack,
 }: InvoiceFormProps) {
     const router = useRouter()
@@ -441,7 +443,7 @@ export function InvoiceForm({
                                     <FormItem>
                                         <FormLabel>Notes</FormLabel>
                                         <FormControl>
-                                            <Textarea placeholder="Notes for the customer" className="h-24" {...field} value={field.value || ''} disabled={isLocked} />
+                                            <Textarea placeholder="Notes for the customer" className="h-24" {...field} value={field.value || ''} disabled={isVoid} />
                                         </FormControl>
                                     </FormItem>
                                 )}
@@ -453,7 +455,7 @@ export function InvoiceForm({
                                     <FormItem>
                                         <FormLabel>Terms & Conditions</FormLabel>
                                         <FormControl>
-                                            <Textarea placeholder="Terms and conditions" className="h-24" {...field} value={field.value || ''} disabled={isLocked} />
+                                            <Textarea placeholder="Terms and conditions" className="h-24" {...field} value={field.value || ''} disabled={isVoid} />
                                         </FormControl>
                                     </FormItem>
                                 )}
@@ -476,7 +478,7 @@ export function InvoiceForm({
                                                 form.setValue('discount_amount', parseFloat(e.target.value) || 0)
                                             }
                                         })}
-                                        disabled={isLocked}
+                                        disabled={isVoid}
                                     />
                                 </div>
                             </div>
@@ -501,20 +503,22 @@ export function InvoiceForm({
                             ← Back to Invoices
                         </Button>
                         <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={form.handleSubmit((values) => onSubmit(values as InvoiceFormValues, false) as any)}
-                                disabled={isSubmitting || isLoading || isLocked}
-                            >
-                                Save as Draft
-                            </Button>
+                            {!isPosted && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={form.handleSubmit((values) => onSubmit(values as InvoiceFormValues, false) as any)}
+                                    disabled={isSubmitting || isLoading || isVoid}
+                                >
+                                    Save as Draft
+                                </Button>
+                            )}
                             <Button
                                 type="button"
                                 onClick={form.handleSubmit((values) => onSubmit(values as InvoiceFormValues, true) as any)}
-                                disabled={isSubmitting || isLoading || isLocked}
+                                disabled={isSubmitting || isLoading || isVoid}
                             >
-                                {initialData?.status === 'draft' ? 'Finalize & Post' : 'Save & Finalize'}
+                                {isPosted ? 'Save Changes' : (initialData?.status === 'draft' ? 'Finalize & Post' : 'Save & Finalize')}
                             </Button>
                         </div>
                     </div>

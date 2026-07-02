@@ -81,7 +81,8 @@ interface BillFormProps {
     nextNumber: string
     onSave: (data: BillFormValues, isFinalize: boolean) => Promise<void>
     isLoading?: boolean
-    isLocked?: boolean
+    isPosted?: boolean
+    isVoid?: boolean
     onBack?: () => void
 }
 
@@ -93,7 +94,8 @@ export function BillForm({
     nextNumber,
     onSave,
     isLoading,
-    isLocked = false,
+    isPosted = false,
+    isVoid = false,
     onBack,
 }: BillFormProps) {
     const router = useRouter()
@@ -222,7 +224,7 @@ export function BillForm({
                             render={({ field }) => (
                                 <FormItem className="lg:col-span-2">
                                     <FormLabel>Vendor</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLocked}>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isVoid}>
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select a vendor" />
@@ -261,7 +263,7 @@ export function BillForm({
                                 <FormItem>
                                     <FormLabel>Vendor Reference</FormLabel>
                                     <FormControl>
-                                        <Input {...field} value={field.value || ''} placeholder="Vendor's invoice or PO number" disabled={isLocked} />
+                                        <Input {...field} value={field.value || ''} placeholder="Vendor's invoice or PO number" disabled={isVoid} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -274,7 +276,7 @@ export function BillForm({
                                 <FormItem>
                                     <FormLabel>Issue Date</FormLabel>
                                     <FormControl>
-                                        <Input type="date" {...field} disabled={isLocked} />
+                                        <Input type="date" {...field} disabled={isVoid} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -287,7 +289,7 @@ export function BillForm({
                                 <FormItem>
                                     <FormLabel>Due Date</FormLabel>
                                     <FormControl>
-                                        <Input type="date" {...field} disabled={isLocked} />
+                                        <Input type="date" {...field} disabled={isVoid} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -305,7 +307,7 @@ export function BillForm({
                                     <TableHead className="w-[150px]">Rate</TableHead>
                                     <TableHead className="w-[200px]">Account</TableHead>
                                     <TableHead className="text-right w-[150px]">Amount</TableHead>
-                                    {!isLocked && <TableHead className="w-[50px]"></TableHead>}
+                                    {!isVoid && <TableHead className="w-[50px]"></TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -314,7 +316,7 @@ export function BillForm({
                                         <TableCell>
                                             <div className="flex flex-col gap-2">
                                                 <Select
-                                                    disabled={isLocked}
+                                                    disabled={isVoid}
                                                     onValueChange={(val) => onItemSelect(index, val)}
                                                 >
                                                     <SelectTrigger>
@@ -330,7 +332,7 @@ export function BillForm({
                                                     control={form.control as any}
                                                     name={`line_items.${index}.description`}
                                                     render={({ field }) => (
-                                                        <Input {...field} value={field.value || ''} placeholder="Description" disabled={isLocked} />
+                                                        <Input {...field} value={field.value || ''} placeholder="Description" disabled={isVoid} />
                                                     )}
                                                 />
                                             </div>
@@ -344,7 +346,7 @@ export function BillForm({
                                                         type="number"
                                                         step="0.01"
                                                         {...field}
-                                                        disabled={isLocked}
+                                                        disabled={isVoid}
                                                         onChange={(e) => {
                                                             const val = parseFloat(e.target.value) || 0
                                                             field.onChange(val)
@@ -364,7 +366,7 @@ export function BillForm({
                                                         type="number"
                                                         step="0.01"
                                                         {...field}
-                                                        disabled={isLocked}
+                                                        disabled={isVoid}
                                                         onChange={(e) => {
                                                             const val = parseFloat(e.target.value) || 0
                                                             field.onChange(val)
@@ -380,7 +382,7 @@ export function BillForm({
                                                 control={form.control as any}
                                                 name={`line_items.${index}.account_id`}
                                                 render={({ field }) => (
-                                                    <Select onValueChange={field.onChange} value={field.value} disabled={isLocked}>
+                                                    <Select onValueChange={field.onChange} value={field.value} disabled={isVoid}>
                                                         <FormControl>
                                                             <SelectTrigger>
                                                                 <SelectValue placeholder="Select Account" />
@@ -398,7 +400,7 @@ export function BillForm({
                                         <TableCell className="text-right align-top pt-4">
                                             {formatCurrency((Number(form.watch(`line_items.${index}.amount`)) || 0) * 100)}
                                         </TableCell>
-                                        {!isLocked && (
+                                        {!isVoid && (
                                             <TableCell>
                                                 <Button
                                                     type="button"
@@ -415,7 +417,7 @@ export function BillForm({
                                 ))}
                             </TableBody>
                         </Table>
-                        {!isLocked && (
+                        {!isVoid && (
                             <Button
                                 type="button"
                                 variant="outline"
@@ -438,7 +440,7 @@ export function BillForm({
                                     <FormItem>
                                         <FormLabel>Notes</FormLabel>
                                         <FormControl>
-                                            <Textarea placeholder="Internal notes" className="h-24" {...field} value={field.value || ''} disabled={isLocked} />
+                                            <Textarea placeholder="Internal notes" className="h-24" {...field} value={field.value || ''} disabled={isVoid} />
                                         </FormControl>
                                     </FormItem>
                                 )}
@@ -461,7 +463,7 @@ export function BillForm({
                                                 form.setValue('discount_amount', parseFloat(e.target.value) || 0)
                                             }
                                         })}
-                                        disabled={isLocked}
+                                        disabled={isVoid}
                                     />
                                 </div>
                             </div>
@@ -486,25 +488,23 @@ export function BillForm({
                             ← Back to Bills
                         </Button>
                         <div className="flex justify-end gap-2">
-                            {!isLocked && (
-                                <>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={form.handleSubmit((values) => onSubmit(values as BillFormValues, false) as any)}
-                                        disabled={isSubmitting || isLoading}
-                                    >
-                                        Save as Draft
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        onClick={form.handleSubmit((values) => onSubmit(values as BillFormValues, true) as any)}
-                                        disabled={isSubmitting || isLoading}
-                                    >
-                                        {initialData?.status === 'draft' ? 'Finalize & Post' : 'Save & Finalize'}
-                                    </Button>
-                                </>
+                            {!isPosted && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={form.handleSubmit((values) => onSubmit(values as BillFormValues, false) as any)}
+                                    disabled={isSubmitting || isLoading || isVoid}
+                                >
+                                    Save as Draft
+                                </Button>
                             )}
+                            <Button
+                                type="button"
+                                onClick={form.handleSubmit((values) => onSubmit(values as BillFormValues, true) as any)}
+                                disabled={isSubmitting || isLoading || isVoid}
+                            >
+                                {isPosted ? 'Save Changes' : (initialData?.status === 'draft' ? 'Finalize & Post' : 'Save & Finalize')}
+                            </Button>
                         </div>
                     </div>
                 </form>

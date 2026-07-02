@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createInvoiceJournalEntry, voidInvoiceJournalEntries, createPaymentJournalEntry } from '@/lib/accounting/journal-engine'
+import { createInvoiceJournalEntry, voidInvoiceJournalEntries, createPaymentJournalEntry, replaceInvoiceJournalEntry, replacePaymentJournalEntry, voidPaymentJournalEntry } from '@/lib/accounting/journal-engine'
 import { sendInvoiceEmail } from '@/lib/email/send-invoice'
 
 export async function handleSendInvoice(id: string, to: string, subject: string, personalMessage?: string) {
@@ -61,9 +61,29 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
     revalidatePath('/invoices')
 }
 
-export async function handleUpdateInvoice(id: string, values: any, isFinalize: boolean, currentStatus: string, currentAmountDue: number) {
+export async function handleUpdateInvoice(id: string, values: any, isFinalize: boolean, currentStatus: string, currentAmountPaid: number) {
     const supabase = await createClient()
     const companyId = await getCompanyId()
+
+    if (currentStatus === 'void') {
+        throw new Error('Cannot edit a voided invoice.')
+    }
+
+    const totalInCents = Math.round(Number(values.total) * 100)
+    if ((currentStatus === 'paid' || currentStatus === 'partially_paid') && totalInCents < currentAmountPaid) {
+        throw new Error(`The invoice total cannot be less than the amount already paid ($${(currentAmountPaid / 100).toFixed(2)}).`)
+    }
+
+    const newAmountDue = isFinalize ? Math.max(0, totalInCents - currentAmountPaid) : totalInCents
+
+    let newStatus = values.status
+    if (isFinalize) {
+        if (currentStatus === 'draft') {
+            newStatus = 'sent'
+        } else if (currentStatus === 'paid' || currentStatus === 'partially_paid' || currentStatus === 'sent' || currentStatus === 'overdue') {
+            newStatus = newAmountDue <= 0 ? 'paid' : (currentAmountPaid > 0 ? 'partially_paid' : currentStatus)
+        }
+    }
 
     // 1. Update Invoice
     const { error: invoiceUpdateError } = await (supabase.from('invoices') as any)
@@ -74,12 +94,12 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
             notes: values.notes,
             terms: values.terms,
             footer: values.footer,
-            status: isFinalize ? 'sent' : values.status,
+            status: newStatus,
             subtotal: Math.round(Number(values.subtotal) * 100),
             tax_amount: Math.round(Number(values.tax_amount) * 100),
             discount_amount: Math.round(Number(values.discount_amount) * 100),
-            total: Math.round(Number(values.total) * 100),
-            amount_due: isFinalize ? Math.round(Number(values.total) * 100) : Number(currentAmountDue),
+            total: totalInCents,
+            amount_due: newAmountDue,
         })
         .eq('id', id)
 
@@ -103,9 +123,13 @@ export async function handleUpdateInvoice(id: string, values: any, isFinalize: b
     const { error: linesError } = await (supabase.from('invoice_line_items') as any).insert(lineItems)
     if (linesError) throw new Error(`Failed to update line items: ${linesError.message}`)
 
-    // 3. Create Journal Entry if Finalized
-    if (isFinalize && currentStatus !== 'sent') {
-        await createInvoiceJournalEntry(supabase, id, companyId)
+    // 3. Create or Replace Journal Entry if Finalized
+    if (isFinalize) {
+        if (currentStatus === 'draft') {
+            await createInvoiceJournalEntry(supabase, id, companyId)
+        } else {
+            await replaceInvoiceJournalEntry(supabase, id, companyId)
+        }
     }
 
     revalidatePath(`/invoices/${id}`)
@@ -201,4 +225,118 @@ export async function handleRecordInvoicePayment(id: string, values: any, contac
     // Step 6: Revalidate page cache
     revalidatePath('/invoices')
     revalidatePath(`/invoices/${id}`)
+}
+
+export async function handleEditInvoicePayment(paymentId: string, invoiceId: string, values: any) {
+    const supabase = await createClient()
+    const companyId = await getCompanyId()
+
+    // 1. Fetch current payment and invoice
+    const { data: currentPayment, error: paymentError } = await (supabase.from('payments') as any)
+        .select('*')
+        .eq('id', paymentId)
+        .single()
+    if (paymentError || !currentPayment) throw new Error('Payment not found')
+
+    const { data: invoice, error: invoiceError } = await (supabase.from('invoices') as any)
+        .select('total, amount_paid, status')
+        .eq('id', invoiceId)
+        .single()
+    if (invoiceError || !invoice) throw new Error('Invoice not found')
+
+    // 2. Calculate differences
+    const oldAmountInCents = Number(currentPayment.amount)
+    const newAmountInCents = Math.round(Number(values.amount) * 100)
+    const amountDifference = newAmountInCents - oldAmountInCents
+
+    // 3. Update Payments table
+    const { error: updateError } = await (supabase.from('payments') as any)
+        .update({
+            date: values.date,
+            amount: newAmountInCents,
+            account_id: values.account_id,
+            reference: values.reference || null,
+            notes: values.notes || null,
+        })
+        .eq('id', paymentId)
+    if (updateError) throw new Error(`Failed to update payment: ${updateError.message}`)
+
+    // 4. Update Allocations table
+    const { error: allocError } = await (supabase.from('payment_allocations') as any)
+        .update({ amount_applied: newAmountInCents })
+        .eq('payment_id', paymentId)
+        .eq('invoice_id', invoiceId)
+    if (allocError) throw new Error(`Failed to update payment allocation: ${allocError.message}`)
+
+    // 5. Recalculate Invoice totals
+    const newAmountPaid = Number(invoice.amount_paid) + amountDifference
+    const newAmountDue = Math.max(0, Number(invoice.total) - newAmountPaid)
+    let newStatus = invoice.status
+    if (invoice.status !== 'void') {
+        newStatus = newAmountDue <= 0 ? 'paid' : (newAmountPaid > 0 ? 'partially_paid' : 'sent')
+    }
+
+    const { error: invUpError } = await (supabase.from('invoices') as any)
+        .update({
+            amount_paid: newAmountPaid,
+            amount_due: newAmountDue,
+            status: newStatus
+        })
+        .eq('id', invoiceId)
+    if (invUpError) throw new Error(`Failed to update invoice totals: ${invUpError.message}`)
+
+    // 6. Replace Journal Entry
+    await replacePaymentJournalEntry(supabase, paymentId, companyId, 'invoice_payment')
+
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${invoiceId}`)
+}
+
+export async function handleDeleteInvoicePayment(paymentId: string, invoiceId: string) {
+    const supabase = await createClient()
+    const companyId = await getCompanyId()
+
+    // 1. Fetch current payment and invoice
+    const { data: currentPayment, error: paymentError } = await (supabase.from('payments') as any)
+        .select('*')
+        .eq('id', paymentId)
+        .single()
+    if (paymentError || !currentPayment) throw new Error('Payment not found')
+
+    const { data: invoice, error: invoiceError } = await (supabase.from('invoices') as any)
+        .select('total, amount_paid, status')
+        .eq('id', invoiceId)
+        .single()
+    if (invoiceError || !invoice) throw new Error('Invoice not found')
+
+    const paymentAmount = Number(currentPayment.amount)
+
+    // 2. Void Journal Entry first (before deleting the payment, so it can reference it)
+    await voidPaymentJournalEntry(supabase, paymentId, companyId)
+
+    // 3. Delete from Payments table (allocations cascade)
+    const { error: delError } = await (supabase.from('payments') as any)
+        .delete()
+        .eq('id', paymentId)
+    if (delError) throw new Error(`Failed to delete payment: ${delError.message}`)
+
+    // 4. Recalculate Invoice totals
+    const newAmountPaid = Math.max(0, Number(invoice.amount_paid) - paymentAmount)
+    const newAmountDue = Math.max(0, Number(invoice.total) - newAmountPaid)
+    let newStatus = invoice.status
+    if (invoice.status !== 'void') {
+        newStatus = newAmountDue <= 0 ? 'paid' : (newAmountPaid > 0 ? 'partially_paid' : 'sent')
+    }
+
+    const { error: invUpError } = await (supabase.from('invoices') as any)
+        .update({
+            amount_paid: newAmountPaid,
+            amount_due: newAmountDue,
+            status: newStatus
+        })
+        .eq('id', invoiceId)
+    if (invUpError) throw new Error(`Failed to update invoice totals: ${invUpError.message}`)
+
+    revalidatePath('/invoices')
+    revalidatePath(`/invoices/${invoiceId}`)
 }

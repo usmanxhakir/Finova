@@ -836,3 +836,273 @@ export async function voidExpenseJournalEntries(
         throw new Error(`Failed to create expense reversal lines: ${linesError.message}`)
     }
 }
+
+// ---------------------------------------------------------------------------
+// REPLACE HELPERS — reverse an existing posted JE, then create a fresh one.
+// Used when an already-posted invoice / bill / payment is edited.
+// ---------------------------------------------------------------------------
+
+/**
+ * Reverses the existing system-generated journal entry for an invoice,
+ * then creates a fresh journal entry reflecting the current invoice data.
+ * Safe to call even if no prior JE exists (will just create a new one).
+ */
+export async function replaceInvoiceJournalEntry(
+    supabase: SupabaseClient<Database>,
+    invoiceId: string,
+    companyId: string
+) {
+    // 1. Find existing JE
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id, description, reference')
+        .eq('source_type', 'invoice')
+        .eq('source_id', invoiceId)
+        .eq('is_system_generated', true)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (existing) {
+        // 2. Fetch its lines
+        const { data: lines } = await (supabase.from('journal_entry_lines') as any)
+            .select('*')
+            .eq('journal_entry_id', existing.id)
+
+        if (lines && lines.length > 0) {
+            // 3. Create reversal entry
+            const { data: reversalEntry, error: revErr } = await (supabase.from('journal_entries') as any)
+                .insert({
+                    company_id: companyId,
+                    date: new Date().toISOString().split('T')[0],
+                    reference: existing.reference,
+                    description: `EDIT REVERSAL: ${existing.description}`,
+                    is_system_generated: true,
+                    source_type: 'invoice',
+                    source_id: invoiceId,
+                })
+                .select()
+                .single()
+
+            if (revErr || !reversalEntry) {
+                throw new Error(`Failed to create reversal entry: ${revErr?.message}`)
+            }
+
+            const reversalLines = (lines as any[]).map(line => ({
+                company_id: companyId,
+                journal_entry_id: (reversalEntry as any).id,
+                account_id: line.account_id,
+                description: `REVERSAL: ${line.description}`,
+                debit: line.credit,
+                credit: line.debit,
+            }))
+
+            const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
+            if (revLinesErr) throw new Error(`Failed to insert reversal lines: ${revLinesErr.message}`)
+        }
+
+        // 4. Delete old JE (cascade deletes its lines)
+        await (supabase.from('journal_entry_lines') as any).delete().eq('journal_entry_id', existing.id)
+        await (supabase.from('journal_entries') as any).delete().eq('id', existing.id)
+    }
+
+    // 5. Create fresh journal entry from current invoice state
+    await createInvoiceJournalEntry(supabase, invoiceId, companyId)
+}
+
+/**
+ * Reverses the existing system-generated journal entry for a bill,
+ * then creates a fresh journal entry reflecting the current bill data.
+ */
+export async function replaceBillJournalEntry(
+    supabase: SupabaseClient<Database>,
+    billId: string,
+    companyId: string
+) {
+    // 1. Find existing JE
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id, description, reference')
+        .eq('source_type', 'bill')
+        .eq('source_id', billId)
+        .eq('is_system_generated', true)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (existing) {
+        // 2. Fetch its lines
+        const { data: lines } = await (supabase.from('journal_entry_lines') as any)
+            .select('*')
+            .eq('journal_entry_id', existing.id)
+
+        if (lines && lines.length > 0) {
+            // 3. Create reversal entry
+            const { data: reversalEntry, error: revErr } = await (supabase.from('journal_entries') as any)
+                .insert({
+                    company_id: companyId,
+                    date: new Date().toISOString().split('T')[0],
+                    reference: existing.reference,
+                    description: `EDIT REVERSAL: ${existing.description}`,
+                    is_system_generated: true,
+                    source_type: 'bill',
+                    source_id: billId,
+                })
+                .select()
+                .single()
+
+            if (revErr || !reversalEntry) {
+                throw new Error(`Failed to create reversal entry: ${revErr?.message}`)
+            }
+
+            const reversalLines = (lines as any[]).map(line => ({
+                company_id: companyId,
+                journal_entry_id: (reversalEntry as any).id,
+                account_id: line.account_id,
+                description: `REVERSAL: ${line.description}`,
+                debit: line.credit,
+                credit: line.debit,
+            }))
+
+            const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
+            if (revLinesErr) throw new Error(`Failed to insert reversal lines: ${revLinesErr.message}`)
+        }
+
+        // 4. Delete old JE
+        await (supabase.from('journal_entry_lines') as any).delete().eq('journal_entry_id', existing.id)
+        await (supabase.from('journal_entries') as any).delete().eq('id', existing.id)
+    }
+
+    // 5. Create fresh journal entry from current bill state
+    await createBillJournalEntry(supabase, billId, companyId)
+}
+
+/**
+ * Reverses the existing system-generated journal entry for a payment,
+ * then creates a fresh journal entry reflecting the updated payment data.
+ * Call AFTER the payments table row has already been updated.
+ */
+export async function replacePaymentJournalEntry(
+    supabase: SupabaseClient<Database>,
+    paymentId: string,
+    companyId: string,
+    type: 'invoice_payment' | 'bill_payment'
+) {
+    // 1. Find existing JE
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id, description, reference')
+        .eq('source_type', 'payment')
+        .eq('source_id', paymentId)
+        .eq('is_system_generated', true)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (existing) {
+        // 2. Fetch its lines
+        const { data: lines } = await (supabase.from('journal_entry_lines') as any)
+            .select('*')
+            .eq('journal_entry_id', existing.id)
+
+        if (lines && lines.length > 0) {
+            // 3. Create reversal entry
+            const { data: reversalEntry, error: revErr } = await (supabase.from('journal_entries') as any)
+                .insert({
+                    company_id: companyId,
+                    date: new Date().toISOString().split('T')[0],
+                    reference: existing.reference,
+                    description: `EDIT REVERSAL: ${existing.description}`,
+                    is_system_generated: true,
+                    source_type: 'payment',
+                    source_id: paymentId,
+                })
+                .select()
+                .single()
+
+            if (revErr || !reversalEntry) {
+                throw new Error(`Failed to create payment reversal entry: ${revErr?.message}`)
+            }
+
+            const reversalLines = (lines as any[]).map(line => ({
+                company_id: companyId,
+                journal_entry_id: (reversalEntry as any).id,
+                account_id: line.account_id,
+                description: `REVERSAL: ${line.description}`,
+                debit: line.credit,
+                credit: line.debit,
+            }))
+
+            const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
+            if (revLinesErr) throw new Error(`Failed to insert payment reversal lines: ${revLinesErr.message}`)
+        }
+
+        // 4. Delete old JE
+        await (supabase.from('journal_entry_lines') as any).delete().eq('journal_entry_id', existing.id)
+        await (supabase.from('journal_entries') as any).delete().eq('id', existing.id)
+    }
+
+    // 5. Create fresh JE from updated payment
+    if (type === 'invoice_payment') {
+        await createPaymentJournalEntry(supabase, paymentId, companyId)
+    } else {
+        await createBillPaymentJournalEntry(supabase, paymentId, companyId)
+    }
+}
+
+/**
+ * Voids (reverses) a payment journal entry without creating a replacement.
+ * Used when a payment is deleted entirely.
+ */
+export async function voidPaymentJournalEntry(
+    supabase: SupabaseClient<Database>,
+    paymentId: string,
+    companyId: string
+) {
+    const { data: existing } = await (supabase.from('journal_entries') as any)
+        .select('id, description, reference')
+        .eq('source_type', 'payment')
+        .eq('source_id', paymentId)
+        .eq('is_system_generated', true)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle()
+
+    if (!existing) return
+
+    const { data: lines } = await (supabase.from('journal_entry_lines') as any)
+        .select('*')
+        .eq('journal_entry_id', existing.id)
+
+    if (lines && lines.length > 0) {
+        const { data: reversalEntry, error: revErr } = await (supabase.from('journal_entries') as any)
+            .insert({
+                company_id: companyId,
+                date: new Date().toISOString().split('T')[0],
+                reference: existing.reference,
+                description: `VOID REVERSAL: ${existing.description}`,
+                is_system_generated: true,
+                source_type: 'payment',
+                source_id: paymentId,
+            })
+            .select()
+            .single()
+
+        if (revErr || !reversalEntry) {
+            throw new Error(`Failed to create void reversal: ${revErr?.message}`)
+        }
+
+        const reversalLines = (lines as any[]).map(line => ({
+            company_id: companyId,
+            journal_entry_id: (reversalEntry as any).id,
+            account_id: line.account_id,
+            description: `REVERSAL: ${line.description}`,
+            debit: line.credit,
+            credit: line.debit,
+        }))
+
+        const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
+        if (revLinesErr) throw new Error(`Failed to insert void reversal lines: ${revLinesErr.message}`)
+    }
+
+    // Delete the original JE
+    await (supabase.from('journal_entry_lines') as any).delete().eq('journal_entry_id', existing.id)
+    await (supabase.from('journal_entries') as any).delete().eq('id', existing.id)
+}

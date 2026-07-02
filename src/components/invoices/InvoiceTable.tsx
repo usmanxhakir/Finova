@@ -279,7 +279,7 @@ export function InvoiceTable({ invoices }: InvoiceTableProps) {
                                                 <DropdownMenuItem asChild>
                                                     <Link href={`/invoices/${invoice.id}`} className="cursor-pointer">View Details</Link>
                                                 </DropdownMenuItem>
-                                                {invoice.status === 'draft' && (
+                                                {invoice.status !== 'void' && (
                                                     <DropdownMenuItem asChild>
                                                         <Link href={`/invoices/${invoice.id}`} className="cursor-pointer">Edit Invoice</Link>
                                                     </DropdownMenuItem>

@@ -17,10 +17,21 @@ import {
 import { formatCurrency } from '@/lib/utils'
 
 interface ChartProps {
-    chartData: any[]
-    expenseBreakdown: any[]
+    chartData: Array<{
+        name: string
+        revenue: number
+        expenses: number
+    }>
+    expenseBreakdown: Array<{
+        name: string
+        value: number
+    }>
     showRevenueChart?: boolean
     showExpenseChart?: boolean
+}
+
+function formatChartCurrency(value: unknown) {
+    return formatCurrency((Number(value) || 0) * 100)
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#82ca9d']
@@ -34,15 +45,15 @@ export function DashboardCharts({
     if (!showRevenueChart && !showExpenseChart) return null;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2">
             {showRevenueChart && (
-                <Card className="border-2 border-zinc-100 shadow-sm overflow-hidden">
+                <Card className="min-w-0 overflow-hidden border-2 border-zinc-100 shadow-sm">
                     <CardHeader>
                         <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Revenue vs Expenses</CardTitle>
                         <p className="text-sm text-zinc-400 font-medium">Monthly trend for the last 6 months</p>
                     </CardHeader>
-                    <CardContent className="h-[400px]">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <CardContent className="h-[400px] min-w-0">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                 <XAxis
@@ -66,7 +77,7 @@ export function DashboardCharts({
                                         fontWeight: 600,
                                         fontSize: '12px'
                                     }}
-                                    formatter={(value: any) => [formatCurrency((Number(value) || 0) * 100), '']}
+                                    formatter={(value) => [formatChartCurrency(value), '']}
                                 />
                                 <Legend
                                     verticalAlign="top"
@@ -95,18 +106,18 @@ export function DashboardCharts({
             )}
 
             {showExpenseChart && (
-                <Card className="border-2 border-zinc-100 shadow-sm overflow-hidden">
+                <Card className="min-w-0 overflow-hidden border-2 border-zinc-100 shadow-sm">
                     <CardHeader>
                         <CardTitle className="text-lg font-black uppercase text-zinc-900 tracking-tight">Expense Breakdown</CardTitle>
                         <p className="text-sm text-zinc-400 font-medium">Account-wise expenses for current month</p>
                     </CardHeader>
-                    <CardContent className="h-[400px]">
+                    <CardContent className="h-[400px] min-w-0">
                         {expenseBreakdown.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-zinc-400 italic font-medium">
                                 <p>No expenses recorded this month.</p>
                             </div>
                         ) : (
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                 <PieChart margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
                                     <Pie
                                         data={expenseBreakdown}
@@ -132,7 +143,7 @@ export function DashboardCharts({
                                             fontWeight: 600,
                                             fontSize: '12px'
                                         }}
-                                        formatter={(value: any) => [formatCurrency((Number(value) || 0) * 100), 'Amount']}
+                                        formatter={(value) => [formatChartCurrency(value), 'Amount']}
                                     />
                                     <Legend
                                         layout="vertical"

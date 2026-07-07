@@ -277,12 +277,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                                     invoiceNumber={invoice.number}
                                                     bankAccounts={bankAccounts}
                                                     onEdit={async (values) => {
-                                                        await handleEditInvoicePayment(invoice.id, alloc.payment_id, values, invoice.contact_id)
+                                                        await handleEditInvoicePayment(alloc.payment_id, invoice.id, values)
                                                         await loadInvoice()
                                                         router.refresh()
                                                     }}
                                                     onDelete={async () => {
-                                                        await handleDeleteInvoicePayment(invoice.id, alloc.payment_id)
+                                                        await handleDeleteInvoicePayment(alloc.payment_id, invoice.id)
                                                         await loadInvoice()
                                                         router.refresh()
                                                     }}

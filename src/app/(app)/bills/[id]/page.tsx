@@ -256,12 +256,12 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                                                     billNumber={bill.number}
                                                     bankAccounts={bankAccounts}
                                                     onEdit={async (values) => {
-                                                        await handleEditBillPayment(bill.id, alloc.payment_id, values, bill.contact_id)
+                                                        await handleEditBillPayment(alloc.payment_id, bill.id, values)
                                                         await loadBill()
                                                         router.refresh()
                                                     }}
                                                     onDelete={async () => {
-                                                        await handleDeleteBillPayment(bill.id, alloc.payment_id)
+                                                        await handleDeleteBillPayment(alloc.payment_id, bill.id)
                                                         await loadBill()
                                                         router.refresh()
                                                     }}

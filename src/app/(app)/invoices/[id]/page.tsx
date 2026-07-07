@@ -35,7 +35,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     const { id } = use(params)
     const router = useRouter()
     const supabase = createClient()
-    const { isViewer } = useUserRole()
+    const { isViewer, companyId } = useUserRole()
 
     const [invoice, setInvoice] = useState<any>(null)
     const [customers, setCustomers] = useState<any[]>([])
@@ -49,7 +49,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     const loadInvoice = async () => {
         try {
             const { data: invData } = await supabase.from('invoices')
-                .select('*, contacts(*), invoice_line_items(*), payment_allocations(*, payments(*))')
+                .select('*, contacts(*), invoice_line_items(*, items(id, name)), payment_allocations(*, payments(*))')
                 .eq('id', id)
                 .single()
 
@@ -72,11 +72,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     { data: settData },
                     { data: bankData }
                 ] = await Promise.all([
-                    supabase.from('invoices').select('*, contacts(*), invoice_line_items(*), payment_allocations(*, payments(*))').eq('id', id).single(),
+                    supabase.from('invoices').select('*, contacts(*), invoice_line_items(*, items(id, name)), payment_allocations(*, payments(*))').eq('id', id).single(),
                     supabase.from('contacts').select('id, name').in('type', ['customer', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
-                    supabase.from('companies').select('*').single(),
+                    companyId
+                        ? supabase.from('companies').select('*').eq('id', companyId).maybeSingle()
+                        : supabase.from('companies').select('*').limit(1).maybeSingle(),
                     supabase.from('accounts').select('id, name, code').in('sub_type', ['bank', 'cash']).eq('is_active', true)
                 ])
 
@@ -98,7 +100,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             }
         }
         loadData()
-    }, [id, supabase, router])
+    }, [id, companyId, supabase, router])
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading invoice...</div>
     if (!invoice) return null

@@ -22,6 +22,7 @@ const styles = StyleSheet.create({
     value: { flex: 1 },
     tableHeader: { flexDirection: 'row', backgroundColor: '#f4f4f5', padding: 8, fontWeight: 'bold', borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f4f4f5', padding: 8 },
+    itemCol: { flex: 2 },
     descCol: { flex: 3 },
     qtyCol: { flex: 1, textAlign: 'right' },
     rateCol: { flex: 1, textAlign: 'right' },
@@ -69,6 +70,7 @@ const InvoicePDF = ({ invoice, settings, logoBase64 }: { invoice: any, settings:
             </View>
 
             <View style={styles.tableHeader}>
+                <Text style={styles.itemCol}>Item</Text>
                 <Text style={styles.descCol}>Description</Text>
                 <Text style={styles.qtyCol}>Qty</Text>
                 <Text style={styles.rateCol}>Rate</Text>
@@ -77,6 +79,7 @@ const InvoicePDF = ({ invoice, settings, logoBase64 }: { invoice: any, settings:
 
             {invoice.invoice_line_items?.map((line: any) => (
                 <View key={line.id} style={styles.tableRow}>
+                    <Text style={styles.itemCol}>{line.items?.name || line.item?.name || ''}</Text>
                     <Text style={styles.descCol}>{line.description}</Text>
                     <Text style={styles.qtyCol}>{line.quantity}</Text>
                     <Text style={styles.rateCol}>{formatCurrency(line.rate)}</Text>

@@ -87,7 +87,8 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#f4f4f5', // zinc-100
     },
-    description: { flex: 4 },
+    item: { flex: 2 },
+    description: { flex: 3 },
     qty: { flex: 1, textAlign: 'right' },
     rate: { flex: 1, textAlign: 'right' },
     amount: { flex: 1, textAlign: 'right' },
@@ -174,7 +175,6 @@ export function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
             currency: settings?.default_currency || 'USD',
         })
     }
-
     return (
         <Document>
             <Page size="A4" style={styles.page}>
@@ -221,6 +221,7 @@ export function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
                 {/* Table */}
                 <View style={styles.table}>
                     <View style={styles.tableHead}>
+                        <Text style={styles.item}>Item</Text>
                         <Text style={styles.description}>Description</Text>
                         <Text style={styles.qty}>Qty</Text>
                         <Text style={styles.rate}>Rate</Text>
@@ -228,6 +229,7 @@ export function InvoicePDF({ invoice, settings }: InvoicePDFProps) {
                     </View>
                     {invoice.invoice_line_items?.map((item: any, i: number) => (
                         <View key={i} style={styles.tableRow}>
+                            <Text style={styles.item}>{item.items?.name || item.item?.name || ''}</Text>
                             <Text style={styles.description}>{item.description}</Text>
                             <Text style={styles.qty}>{item.quantity}</Text>
                             <Text style={styles.rate}>{formatCurrencyDisplay(item.rate)}</Text>

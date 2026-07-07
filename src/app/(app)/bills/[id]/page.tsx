@@ -33,7 +33,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
     const { id } = use(params)
     const router = useRouter()
     const supabase = createClient()
-    const { isViewer } = useUserRole()
+    const { isViewer, companyId } = useUserRole()
 
     const [bill, setBill] = useState<any>(null)
     const [vendors, setVendors] = useState<any[]>([])
@@ -46,7 +46,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
     const loadBill = async () => {
         try {
             const { data: billData } = await supabase.from('bills')
-                .select('*, contacts(*), bill_line_items(*), payment_allocations(*, payments(*))')
+                .select('*, contacts(*), bill_line_items(*, items(id, name)), payment_allocations(*, payments(*))')
                 .eq('id', id)
                 .single()
 
@@ -69,11 +69,13 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                     { data: settData },
                     { data: bankData }
                 ] = await Promise.all([
-                    supabase.from('bills').select('*, contacts(*), bill_line_items(*), payment_allocations(*, payments(*))').eq('id', id).single(),
+                    supabase.from('bills').select('*, contacts(*), bill_line_items(*, items(id, name)), payment_allocations(*, payments(*))').eq('id', id).single(),
                     supabase.from('contacts').select('id, name').in('type', ['vendor', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
-                    supabase.from('companies').select('*').single(),
+                    companyId
+                        ? supabase.from('companies').select('*').eq('id', companyId).maybeSingle()
+                        : supabase.from('companies').select('*').limit(1).maybeSingle(),
                     supabase.from('accounts').select('id, name, code').in('sub_type', ['bank', 'cash']).eq('is_active', true)
                 ])
 
@@ -95,7 +97,7 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
             }
         }
         loadData()
-    }, [id, supabase, router])
+    }, [id, companyId, supabase, router])
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading bill...</div>
     if (!bill) return null

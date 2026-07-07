@@ -326,6 +326,7 @@ export function InvoiceForm({
                                         <TableCell>
                                             <div className="flex flex-col gap-2">
                                                 <Select
+                                                    value={form.watch(`line_items.${index}.item_id`) || undefined}
                                                     onValueChange={(val) => onItemSelect(index, val)}
                                                 >
                                                     <SelectTrigger>

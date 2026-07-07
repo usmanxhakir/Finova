@@ -13,7 +13,7 @@ export async function handleSendInvoice(id: string, to: string, subject: string,
 
     // 1. Fetch data
     const { data: invoice } = await (supabase.from('invoices') as any)
-        .select('*, contacts(*), invoice_line_items(*)')
+        .select('*, contacts(*), invoice_line_items(*, items(id, name))')
         .eq('id', id)
         .single()
 

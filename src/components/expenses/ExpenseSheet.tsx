@@ -56,6 +56,7 @@ const expenseSchema = z.object({
     id: z.string().optional(),
     date: z.date(),
     payee: z.string().min(1, "Payee is required"),
+    project_id: z.string().optional().nullable(),
     expense_account_id: z.string().min(1, "Expense account is required"),
     payment_account_id: z.string().min(1, "Payment account is required"),
     amount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
@@ -74,6 +75,7 @@ interface ExpenseSheetProps {
     onOpenChange: (open: boolean) => void
     expense?: any // For editing
     accounts: any[]
+    projects?: any[]
 }
 
 export function ExpenseSheet({
@@ -81,6 +83,7 @@ export function ExpenseSheet({
     onOpenChange,
     expense,
     accounts,
+    projects = [],
 }: ExpenseSheetProps) {
     const [submitting, setSubmitting] = useState(false)
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -91,6 +94,7 @@ export function ExpenseSheet({
             id: expense.id,
             date: new Date(expense.date),
             payee: expense.payee,
+            project_id: expense.project_id || '',
             expense_account_id: expense.expense_account_id,
             payment_account_id: expense.payment_account_id,
             amount: (expense.amount / 100).toString(),
@@ -99,6 +103,7 @@ export function ExpenseSheet({
         } : {
             date: new Date(),
             payee: "",
+            project_id: "",
             expense_account_id: "",
             payment_account_id: "",
             amount: "",
@@ -114,6 +119,7 @@ export function ExpenseSheet({
             if (values.id) formData.append('id', values.id)
             formData.append('date', format(values.date, 'yyyy-MM-dd'))
             formData.append('payee', values.payee)
+            if (values.project_id) formData.append('project_id', values.project_id)
             formData.append('expense_account_id', values.expense_account_id)
             formData.append('payment_account_id', values.payment_account_id)
             formData.append('amount', values.amount)
@@ -233,6 +239,32 @@ export function ExpenseSheet({
                                     <FormControl>
                                         <Input placeholder="Uber, Rent, etc." {...field} />
                                     </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        
+                        <FormField
+                            control={form.control}
+                            name="project_id"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Project (Optional)</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a project" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="">None</SelectItem>
+                                            {projects.map((p) => (
+                                                <SelectItem key={p.id} value={p.id}>
+                                                    {p.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <FormMessage />
                                 </FormItem>
                             )}

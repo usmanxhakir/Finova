@@ -13,6 +13,7 @@ export type ModuleId =
   | 'payments'
   | 'reports'
   | 'settings'
+  | 'projects'
 
 export type UserRole = 'admin' | 'accountant' | 'viewer' | 'procurement'
 export type CompanyPlan = 'free' | 'pro' | 'studio' | 'po_only'
@@ -32,6 +33,7 @@ export const ALL_MODULES: ModuleId[] = [
   'payments',
   'reports',
   'settings',
+  'projects',
 ]
 
 export const PROCUREMENT_MODULES: ModuleId[] = [
@@ -82,6 +84,7 @@ export function getModuleForPath(pathname: string): ModuleId | null {
   if (pathname === '/receive-payments' || pathname.startsWith('/receive-payments/')) return 'payments'
   if (pathname === '/reports' || pathname.startsWith('/reports/')) return 'reports'
   if (pathname === '/settings' || pathname.startsWith('/settings/')) return 'settings'
+  if (pathname === '/projects' || pathname.startsWith('/projects/')) return 'projects'
 
   return null
 }

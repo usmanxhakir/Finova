@@ -13,6 +13,7 @@ export default function ExpensesPage() {
     const { isViewer } = useUserRole()
     const [expenses, setExpenses] = useState<any[]>([])
     const [accounts, setAccounts] = useState<any[]>([])
+    const [projects, setProjects] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [isSheetOpen, setIsSheetOpen] = useState(false)
     const [selectedExpense, setSelectedExpense] = useState<any>(null)
@@ -22,7 +23,8 @@ export default function ExpensesPage() {
         try {
             const [
                 { data: expData },
-                { data: accData }
+                { data: accData },
+                { data: projData }
             ] = await Promise.all([
                 supabase
                     .from('expenses')
@@ -31,11 +33,16 @@ export default function ExpensesPage() {
                 supabase
                     .from('accounts')
                     .select('id, name, code, sub_type')
+                    .eq('is_active', true),
+                supabase
+                    .from('projects')
+                    .select('id, name, contact_id')
                     .eq('is_active', true)
             ])
 
             setExpenses(expData || [])
             setAccounts(accData || [])
+            setProjects(projData || [])
         } catch (error) {
             console.error('Error loading expenses:', error)
         } finally {
@@ -97,6 +104,7 @@ export default function ExpensesPage() {
                 onOpenChange={handleSheetOpenChange}
                 expense={selectedExpense}
                 accounts={accounts}
+                projects={projects}
             />
         </div>
     )

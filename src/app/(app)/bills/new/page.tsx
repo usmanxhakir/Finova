@@ -1,5 +1,4 @@
 'use client'
-import { getRedirectError } from 'next/dist/client/components/redirect'
 
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -16,6 +15,7 @@ export default function NewBillPage() {
     const [vendors, setVendors] = useState<any[]>([])
     const [items, setItems] = useState<any[]>([])
     const [accounts, setAccounts] = useState<any[]>([])
+    const [projects, setProjects] = useState<any[]>([])
     const [nextNumber, setNextNumber] = useState<string>('')
     const [loading, setLoading] = useState(true)
 
@@ -26,17 +26,20 @@ export default function NewBillPage() {
                     { data: vendData },
                     { data: itemData },
                     { data: accData },
+                    { data: projData },
                     { data: billNum }
                 ] = await Promise.all([
                     supabase.from('contacts').select('id, name').in('type', ['vendor', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
+                    supabase.from('projects').select('id, name, contact_id').eq('is_active', true),
                     supabase.rpc('generate_bill_number')
                 ])
 
                 setVendors(vendData || [])
                 setItems(itemData || [])
                 setAccounts(accData || [])
+                setProjects(projData || [])
                 setNextNumber(billNum || '')
             } catch (error) {
                 console.error('Error loading new bill data:', error)
@@ -77,6 +80,7 @@ export default function NewBillPage() {
                 vendors={vendors}
                 items={items}
                 accounts={accounts}
+                projects={projects}
                 nextNumber={nextNumber}
                 onSave={onSave}
                 onBack={() => router.push('/bills')}

@@ -18,7 +18,6 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { Calendar } from '@/components/ui/calendar'
 import {
     Form,
     FormControl,
@@ -28,11 +27,6 @@ import {
     FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover'
 import {
     Select,
     SelectContent,
@@ -51,7 +45,6 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatCurrency } from '@/lib/utils'
 import { format } from 'date-fns'
-import { Database } from '@/types/database.types'
 
 const lineItemSchema = z.object({
     id: z.string().optional(),
@@ -67,6 +60,7 @@ const lineItemSchema = z.object({
 const invoiceSchema = z.object({
     number: z.string().optional(),
     contact_id: z.string().min(1, 'Customer is required'),
+    project_id: z.string().optional().nullable(),
     customer_reference: z.string().optional().nullable(),
     issue_date: z.string().min(1, 'Issue date is required'),
     due_date: z.string().min(1, 'Due date is required'),
@@ -85,6 +79,7 @@ type InvoiceFormValues = z.infer<typeof invoiceSchema>
 interface InvoiceFormProps {
     initialData?: any
     customers: any[]
+    projects?: any[]
     items: any[]
     accounts: any[]
     nextNumber: string
@@ -92,13 +87,13 @@ interface InvoiceFormProps {
     isLoading?: boolean
     isPosted?: boolean
     isVoid?: boolean
-    /** Called when the user wants to navigate back (after dirty-check passes) */
     onBack?: () => void
 }
 
 export function InvoiceForm({
     initialData,
     customers,
+    projects = [],
     items,
     accounts,
     nextNumber,
@@ -118,6 +113,7 @@ export function InvoiceForm({
         defaultValues: initialData || {
             number: '',
             contact_id: '',
+            project_id: '',
             customer_reference: '',
             issue_date: new Date().toISOString().split('T')[0],
             due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -181,7 +177,6 @@ export function InvoiceForm({
         form.setValue('total', total)
     }, [subtotal, taxAmount, total, form])
 
-    // Browser navigation protection (tab close / reload)
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (form.formState.isDirty) {
@@ -246,6 +241,37 @@ export function InvoiceForm({
                                                     {c.name}
                                                 </SelectItem>
                                             ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control as any}
+                            name="project_id"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Project (Optional)</FormLabel>
+                                    <Select 
+                                        onValueChange={field.onChange} 
+                                        value={field.value || ""}
+                                        disabled={!form.watch('contact_id')}
+                                    >
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={form.watch('contact_id') ? "Select a project" : "Select customer first"} />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="">None</SelectItem>
+                                            {projects
+                                                .filter(p => p.contact_id === form.watch('contact_id'))
+                                                .map((p) => (
+                                                    <SelectItem key={p.id} value={p.id}>
+                                                        {p.name}
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />
@@ -428,7 +454,7 @@ export function InvoiceForm({
                             variant="outline"
                             size="sm"
                             className="mt-4"
-                            onClick={() => append({ description: '', quantity: 1, rate: 0, amount: 0, account_id: '', tax_rate: 0 })} // Added tax_rate default
+                            onClick={() => append({ description: '', quantity: 1, rate: 0, amount: 0, account_id: '', tax_rate: 0 })}
                         >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Line Item

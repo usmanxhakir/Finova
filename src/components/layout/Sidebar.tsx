@@ -23,6 +23,7 @@ import {
     Sparkles,
     MoreHorizontal,
     LogOut,
+    FolderKanban,
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -67,6 +68,7 @@ const navItems: Array<{ name: string; href: string; icon: any; module: ModuleId;
     { name: "Expenses",   href: "/expenses",  icon: CreditCard, module: 'expenses' },
     { name: "Contacts",   href: "/contacts",  icon: Users, module: 'contacts' },
     { name: "Items",      href: "/items",     icon: Package, module: 'items' },
+    { name: "Projects",   href: "/projects",  icon: FolderKanban, module: 'projects' },
 ];
 
 const reportSubItems = [

@@ -24,6 +24,7 @@ export async function handleSaveInvoice(values: any, isFinalize: boolean, settin
                 company_id: companyId,
                 number: invoiceNumber,
                 contact_id: values.contact_id,
+                project_id: values.project_id || null,
                 issue_date: values.issue_date,
                 due_date: values.due_date,
                 notes: values.notes,

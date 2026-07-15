@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Database } from "@/types/database.types";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 type Contact = Database["public"]["Tables"]["contacts"]["Row"];
 
@@ -21,6 +22,8 @@ interface ContactTableProps {
 }
 
 export function ContactTable({ contacts, onEdit, isLoading }: ContactTableProps) {
+    const router = useRouter();
+
     if (isLoading) {
         return (
             <div className="flex h-64 items-center justify-center">
@@ -54,7 +57,7 @@ export function ContactTable({ contacts, onEdit, isLoading }: ContactTableProps)
                         <TableRow
                             key={contact.id}
                             className="cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                            onClick={() => onEdit(contact)}
+                            onClick={() => router.push(`/contacts/${contact.id}`)}
                         >
                             <TableCell className="font-medium">{contact.name}</TableCell>
                             <TableCell>

@@ -9,11 +9,13 @@ export default async function TransactionListReportPage(props: {
         account_id?: string, 
         date_from?: string, 
         date_to?: string, 
-        label?: string 
+        label?: string,
+        project_id?: string
     }> 
 }) {
     const searchParams = await props.searchParams;
     const accountId = searchParams.account_id;
+    const projectId = searchParams.project_id;
     const dateFrom = searchParams.date_from;
     const dateTo = searchParams.date_to;
     const accountLabel = searchParams.label;
@@ -34,6 +36,7 @@ export default async function TransactionListReportPage(props: {
         `);
     
     if (accountId) invQuery = invQuery.eq('invoice_line_items.account_id', accountId);
+    if (projectId) invQuery = invQuery.eq('project_id', projectId);
     if (dateFrom) invQuery = invQuery.gte('issue_date', dateFrom);
     if (dateTo) invQuery = invQuery.lte('issue_date', dateTo);
 
@@ -53,6 +56,7 @@ export default async function TransactionListReportPage(props: {
         `);
 
     if (accountId) billQuery = billQuery.eq('bill_line_items.account_id', accountId);
+    if (projectId) billQuery = billQuery.eq('project_id', projectId);
     if (dateFrom) billQuery = billQuery.gte('issue_date', dateFrom);
     if (dateTo) billQuery = billQuery.lte('issue_date', dateTo);
 
@@ -71,6 +75,7 @@ export default async function TransactionListReportPage(props: {
         `);
 
     if (accountId) expQuery = expQuery.eq('expense_account_id', accountId);
+    if (projectId) expQuery = expQuery.eq('project_id', projectId);
     if (dateFrom) expQuery = expQuery.gte('date', dateFrom);
     if (dateTo) expQuery = expQuery.lte('date', dateTo);
 
@@ -94,7 +99,12 @@ export default async function TransactionListReportPage(props: {
     if (dateFrom) pmtQuery = pmtQuery.gte('date', dateFrom);
     if (dateTo) pmtQuery = pmtQuery.lte('date', dateTo);
 
-    const { data: paymentsData } = await pmtQuery;
+    // Payments do not have project_id currently, so if filtering by project_id, we just return empty array for payments
+    let paymentsData: any[] = [];
+    if (!projectId) {
+        const { data } = await pmtQuery;
+        paymentsData = data || [];
+    }
 
     // 5. Normalize and Combine
     const transactions: any[] = []
@@ -179,6 +189,7 @@ export default async function TransactionListReportPage(props: {
             initialTransactions={transactions} 
             preAppliedFilters={{
                 accountId,
+                projectId,
                 dateFrom,
                 dateTo,
                 accountLabel

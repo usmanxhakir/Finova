@@ -44,7 +44,6 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { formatCurrency } from '@/lib/utils'
-import { Database } from '@/types/database.types'
 
 const lineItemSchema = z.object({
     id: z.string().optional(),
@@ -60,6 +59,7 @@ const lineItemSchema = z.object({
 const billSchema = z.object({
     number: z.string().optional(),
     contact_id: z.string().min(1, 'Vendor is required'),
+    project_id: z.string().optional().nullable(),
     reference_number: z.string().optional().nullable(),
     issue_date: z.string().min(1, 'Issue date is required'),
     due_date: z.string().min(1, 'Due date is required'),
@@ -76,6 +76,7 @@ type BillFormValues = z.infer<typeof billSchema>
 interface BillFormProps {
     initialData?: any
     vendors: any[]
+    projects?: any[]
     items: any[]
     accounts: any[]
     nextNumber: string
@@ -89,6 +90,7 @@ interface BillFormProps {
 export function BillForm({
     initialData,
     vendors,
+    projects = [],
     items,
     accounts,
     nextNumber,
@@ -108,6 +110,7 @@ export function BillForm({
         defaultValues: initialData || {
             number: nextNumber,
             contact_id: '',
+            project_id: '',
             reference_number: '',
             issue_date: new Date().toISOString().split('T')[0],
             due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -169,7 +172,6 @@ export function BillForm({
         form.setValue('total', total)
     }, [subtotal, taxAmount, total, form])
 
-    // Browser navigation protection (tab close / reload) // Unsaved changes check
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (form.formState.isDirty) {
@@ -210,7 +212,7 @@ export function BillForm({
             setIsSubmitting(false)
         }
     }
-    // Filter expense related accounts
+
     const expenseAccounts = accounts.filter(a => a.type === 'expense' || a.type === 'cost_of_goods_sold' || a.type === 'asset' || a.type === 'liability')
 
     return (
@@ -236,6 +238,37 @@ export function BillForm({
                                                     {v.name}
                                                 </SelectItem>
                                             ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control as any}
+                            name="project_id"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Project (Optional)</FormLabel>
+                                    <Select 
+                                        onValueChange={field.onChange} 
+                                        value={field.value || ""}
+                                        disabled={!form.watch('contact_id')}
+                                    >
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={form.watch('contact_id') ? "Select a project" : "Select vendor first"} />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="">None</SelectItem>
+                                            {projects
+                                                .filter(p => p.contact_id === form.watch('contact_id'))
+                                                .map((p) => (
+                                                    <SelectItem key={p.id} value={p.id}>
+                                                        {p.name}
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                     <FormMessage />

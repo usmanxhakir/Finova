@@ -15,6 +15,7 @@ export default function NewInvoicePage() {
     const [customers, setCustomers] = useState<any[]>([])
     const [items, setItems] = useState<any[]>([])
     const [accounts, setAccounts] = useState<any[]>([])
+    const [projects, setProjects] = useState<any[]>([])
     const [settings, setSettings] = useState<any>(null)
     const [loading, setLoading] = useState(true)
 
@@ -25,11 +26,13 @@ export default function NewInvoicePage() {
                     { data: custData },
                     { data: itemData },
                     { data: accData },
+                    { data: projData },
                     { data: settData }
                 ] = await Promise.all([
                     supabase.from('contacts').select('id, name').in('type', ['customer', 'both']).eq('is_active', true),
                     supabase.from('items').select('*').eq('is_active', true),
                     supabase.from('accounts').select('id, name, code, type').eq('is_active', true),
+                    supabase.from('projects').select('id, name, contact_id').eq('is_active', true),
                     supabase.from('companies').select('*').limit(1).maybeSingle()
                 ])
 
@@ -40,6 +43,7 @@ export default function NewInvoicePage() {
                 setCustomers(custData || [])
                 setItems(itemData || [])
                 setAccounts(accData || [])
+                setProjects(projData || [])
                 setSettings(settData)
             } catch (error) {
                 console.error('Error loading new invoice data:', error)
@@ -83,6 +87,7 @@ export default function NewInvoicePage() {
                 customers={customers}
                 items={items}
                 accounts={accounts}
+                projects={projects}
                 nextNumber={nextNumber}
                 onSave={onSave}
                 onBack={() => router.push('/invoices')}

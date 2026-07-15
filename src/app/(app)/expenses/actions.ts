@@ -5,8 +5,6 @@ import { revalidatePath } from 'next/cache'
 import { createExpenseJournalEntry, voidExpenseJournalEntries } from '@/lib/accounting/journal-engine'
 import { getCompanyId } from '@/lib/supabase/get-company-id'
 
-
-
 export async function handleSaveExpense(formData: FormData) {
     const supabase = await createClient()
     const companyId = await getCompanyId()
@@ -18,6 +16,7 @@ export async function handleSaveExpense(formData: FormData) {
     const payment_account_id = formData.get('payment_account_id') as string
     const amount = Math.round(Number(formData.get('amount')) * 100)
     const notes = formData.get('notes') as string
+    const project_id = formData.get('project_id') as string | null
     const receiptFile = formData.get('receipt') as File | null
 
     let receipt_url = formData.get('receipt_url') as string | null
@@ -46,6 +45,7 @@ export async function handleSaveExpense(formData: FormData) {
         company_id: companyId,
         date,
         payee,
+        project_id,
         expense_account_id,
         payment_account_id,
         amount,

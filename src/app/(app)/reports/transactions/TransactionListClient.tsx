@@ -33,6 +33,7 @@ export default function TransactionListClient({
     initialTransactions: TransactionDetails[]
     preAppliedFilters?: {
         accountId?: string
+        projectId?: string
         dateFrom?: string
         dateTo?: string
         accountLabel?: string
@@ -52,7 +53,7 @@ export default function TransactionListClient({
 
     // Filters
     const [startDate, setStartDate] = useState(
-        preAppliedFilters?.accountId && !preAppliedFilters?.dateFrom 
+        (preAppliedFilters?.accountId || preAppliedFilters?.projectId) && !preAppliedFilters?.dateFrom 
             ? "" 
             : (preAppliedFilters?.dateFrom || format(startOfMonth(new Date()), 'yyyy-MM-dd'))
     )
@@ -79,7 +80,7 @@ export default function TransactionListClient({
             Expense: true,
             Payment: true
         })
-        if (preAppliedFilters?.accountId) {
+        if (preAppliedFilters?.accountId || preAppliedFilters?.projectId) {
             router.push('/reports/transactions')
         }
     }
@@ -224,7 +225,7 @@ export default function TransactionListClient({
             />
 
             {/* Drill-down Info Banner */}
-            {preAppliedFilters?.accountId && (
+            {(preAppliedFilters?.accountId || preAppliedFilters?.projectId) && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between text-blue-800 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-100 p-2 rounded-full">
@@ -232,7 +233,7 @@ export default function TransactionListClient({
                         </div>
                         <div>
                             <p className="font-semibold text-sm">
-                                Showing transactions for: {preAppliedFilters.accountLabel || 'Selected Account'}
+                                Showing transactions for: {preAppliedFilters?.accountId ? (preAppliedFilters.accountLabel || 'Selected Account') : (preAppliedFilters.accountLabel || 'Selected Project')}
                             </p>
                             <p className="text-xs text-blue-600/80">
                                 Period: {preAppliedFilters.dateFrom ? formatDate(preAppliedFilters.dateFrom) : 'All history'} to {formatDate(preAppliedFilters.dateTo || endDate)}

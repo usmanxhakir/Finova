@@ -24,6 +24,7 @@ export async function handleSaveBill(values: any, isFinalize: boolean): Promise<
                 company_id: companyId,
                 number: billNumber,
                 contact_id: values.contact_id,
+                project_id: values.project_id || null,
                 reference_number: values.reference_number,
                 issue_date: values.issue_date,
                 due_date: values.due_date,

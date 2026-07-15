@@ -70,6 +70,69 @@ export type Database = {
         }
         Relationships: []
       }
+      projects: {
+        Row: {
+          id: string
+          company_id: string
+          contact_id: string
+          created_at: string
+          updated_at: string
+          name: string
+          code: string | null
+          description: string | null
+          status: string
+          start_date: string | null
+          end_date: string | null
+          budget: number
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          contact_id: string
+          created_at?: string
+          updated_at?: string
+          name: string
+          code?: string | null
+          description?: string | null
+          status?: string
+          start_date?: string | null
+          end_date?: string | null
+          budget?: number
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          contact_id?: string
+          created_at?: string
+          updated_at?: string
+          name?: string
+          code?: string | null
+          description?: string | null
+          status?: string
+          start_date?: string | null
+          end_date?: string | null
+          budget?: number
+          is_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_company_id_fkey"
+            columns: ["company_id"]
+            isOneToMany: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToMany: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       [key: string]: {
         Row: any
         Insert: any

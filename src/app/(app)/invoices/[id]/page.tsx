@@ -34,42 +34,6 @@ import { useUserRole } from '@/hooks/useUserRole'
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params)
     const router = useRouter()
-'use client'
-
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState, use } from 'react'
-import { InvoiceForm } from '@/components/invoices/InvoiceForm'
-import { StatusBadge } from '@/components/invoices/InvoiceTable'
-import { RecordPaymentModal } from '@/components/invoices/RecordPaymentModal'
-import { InvoiceDownloadButton } from '@/components/invoices/InvoiceDownloadButton'
-import { SendInvoiceModal } from '@/components/invoices/SendInvoiceModal'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { formatCurrency, cn } from '@/lib/utils'
-import { format } from 'date-fns'
-import { handleUpdateInvoice, handleVoidInvoice, handleRecordInvoicePayment, handleEditInvoicePayment, handleDeleteInvoicePayment } from './actions'
-import { EditPaymentModal } from '@/components/invoices/EditPaymentModal'
-import { ArrowLeft, Ban } from 'lucide-react'
-import Link from 'next/link'
-import { useUserRole } from '@/hooks/useUserRole'
-
-export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = use(params)
-    const router = useRouter()
     const supabase = createClient()
     const { isViewer, companyId } = useUserRole()
 
@@ -141,8 +105,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         }
         loadData()
     }, [id, companyId, supabase, router])
-            />
-
             {invoice.payment_allocations && invoice.payment_allocations.length > 0 && (
                 <Card className="mt-8">
                     <CardHeader>

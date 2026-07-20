@@ -102,6 +102,8 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
         }
         loadData()
     }, [id, companyId, supabase, router])
+    return (
+        <>
             {bill.payment_allocations && bill.payment_allocations.length > 0 && (
                 <Card className="mt-8">
                     <CardHeader>
@@ -149,6 +151,6 @@ export default function BillDetailPage({ params }: { params: Promise<{ id: strin
                     </CardContent>
                 </Card>
             )}
-        </div>
+        </>
     )
 }

@@ -105,6 +105,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         }
         loadData()
     }, [id, companyId, supabase, router])
+    return (
+        <>
             {invoice.payment_allocations && invoice.payment_allocations.length > 0 && (
                 <Card className="mt-8">
                     <CardHeader>
@@ -162,6 +164,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     onSuccess={loadInvoice}
                 />
             )}
-        </div>
+        </>
     )
 }

@@ -3,6 +3,12 @@ import { getCompanyId } from '@/lib/supabase/get-company-id'
 import { ProjectDetailHeader } from '@/components/projects/ProjectDetailHeader'
 import { ProjectKpiCards } from '@/components/projects/ProjectKpiCards'
 import TransactionListClient from '@/app/(app)/reports/transactions/TransactionListClient'
+import { Database } from '@/types/database.types'
+
+type ProjectRow = Database['public']['Tables']['projects']['Row']
+type Project = ProjectRow & {
+    contacts: { name: string } | null
+}
 
 export default async function ProjectDetailPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
@@ -11,20 +17,27 @@ export default async function ProjectDetailPage(props: { params: Promise<{ id: s
     const companyId = await getCompanyId()
 
     // 1. Fetch Project
-    const { data: project } = await supabase
+    const { data: projectRow } = await supabase
         .from('projects')
-        .select(`
-            *,
-            contacts (
-                name
-            )
-        `)
+        .select('*')
         .eq('id', id)
         .eq('company_id', companyId)
         .single()
+        .overrideTypes<ProjectRow, { merge: false }>()
 
-    if (!project) {
+    if (!projectRow) {
         return <div>Project not found</div>
+    }
+
+    const { data: contact } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', projectRow.contact_id)
+        .single() as { data: { name: string } | null }
+
+    const project: Project = {
+        ...projectRow,
+        contacts: contact,
     }
 
     // 2. Fetch Transactions (invoices, bills, expenses)

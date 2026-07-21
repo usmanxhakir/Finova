@@ -5,6 +5,11 @@ import { ContactTransactionsTab } from '@/components/contacts/ContactTransaction
 import { ContactDetailsTab } from '@/components/contacts/ContactDetailsTab'
 import { ContactProjectsTab } from '@/components/contacts/ContactProjectsTab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+type Contact = {
+    name: string
+    type: string | null
+    [key: string]: unknown
+}
 
 export default async function ContactDetailPage(props: { params: Promise<{ id: string }> }) {
     const params = await props.params;
@@ -18,7 +23,7 @@ export default async function ContactDetailPage(props: { params: Promise<{ id: s
         .select('*')
         .eq('id', id)
         .eq('company_id', companyId)
-        .single()
+        .single() as { data: Contact | null }
 
     if (!contact) {
         return <div>Contact not found</div>
@@ -35,7 +40,7 @@ export default async function ContactDetailPage(props: { params: Promise<{ id: s
 
     // 2. Fetch Projects (if customer or both)
     let projects: any[] = []
-    let showProjectsTab = ['customer', 'both'].includes(contact.type.toLowerCase())
+    let showProjectsTab = ['customer', 'both'].includes((contact.type || '').toLowerCase())
     if (showProjectsTab) {
         const { data: projectsData } = await supabase
             .from('projects')

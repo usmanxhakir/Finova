@@ -43,6 +43,7 @@ import {
     TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { SELECT_NONE_VALUE } from '@/lib/form-constants'
 import { formatCurrency } from '@/lib/utils'
 
 const lineItemSchema = z.object({
@@ -110,7 +111,7 @@ export function BillForm({
         defaultValues: initialData || {
             number: nextNumber,
             contact_id: '',
-            project_id: '',
+            project_id: SELECT_NONE_VALUE,
             reference_number: '',
             issue_date: new Date().toISOString().split('T')[0],
             due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -129,6 +130,11 @@ export function BillForm({
     })
 
     const onItemSelect = useCallback((index: number, val: string) => {
+        if (val === SELECT_NONE_VALUE) {
+            form.setValue(`line_items.${index}.item_id`, null)
+            return
+        }
+
         const item = items.find(i => i.id === val)
         if (item) {
             const rate = Number(item.default_rate) / 100
@@ -201,7 +207,14 @@ export function BillForm({
     const onSubmit = async (values: BillFormValues, isFinalize: boolean) => {
         try {
             setIsSubmitting(true)
-            await onSave(values, isFinalize)
+            await onSave({
+                ...values,
+                project_id: values.project_id && values.project_id !== SELECT_NONE_VALUE ? values.project_id : null,
+                line_items: values.line_items.map((item) => ({
+                    ...item,
+                    item_id: item.item_id && item.item_id !== SELECT_NONE_VALUE ? item.item_id : null,
+                })),
+            }, isFinalize)
         } catch (error: any) {
             if (error.message === 'DUPLICATE_NUMBER') {
                 setShowDuplicateDialog(true)
@@ -251,8 +264,8 @@ export function BillForm({
                                 <FormItem>
                                     <FormLabel>Project (Optional)</FormLabel>
                                     <Select 
-                                        onValueChange={field.onChange} 
-                                        value={field.value || ""}
+                                        onValueChange={(value) => field.onChange(value === SELECT_NONE_VALUE ? null : value)}
+                                        value={field.value || SELECT_NONE_VALUE}
                                         disabled={!form.watch('contact_id')}
                                     >
                                         <FormControl>
@@ -261,7 +274,7 @@ export function BillForm({
                                             </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            <SelectItem value="">None</SelectItem>
+                                            <SelectItem value={SELECT_NONE_VALUE}>None</SelectItem>
                                             {projects
                                                 .filter(p => p.contact_id === form.watch('contact_id'))
                                                 .map((p) => (
@@ -349,7 +362,7 @@ export function BillForm({
                                         <TableCell>
                                             <div className="flex flex-col gap-2">
                                                 <Select
-                                                    value={form.watch(`line_items.${index}.item_id`) || undefined}
+                                                    value={form.watch(`line_items.${index}.item_id`) || SELECT_NONE_VALUE}
                                                     disabled={isVoid}
                                                     onValueChange={(val) => onItemSelect(index, val)}
                                                 >
@@ -357,6 +370,7 @@ export function BillForm({
                                                         <SelectValue placeholder="Select Item (Optional)" />
                                                     </SelectTrigger>
                                                     <SelectContent>
+                                                        <SelectItem value={SELECT_NONE_VALUE}>None</SelectItem>
                                                         {items.map((i) => (
                                                             <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
                                                         ))}

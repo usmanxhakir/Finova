@@ -49,6 +49,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { cn } from '@/lib/utils'
+import { SELECT_NONE_VALUE } from '@/lib/form-constants'
 import { handleSaveExpense, handleDeleteExpense } from '@/app/(app)/expenses/actions'
 import { toast } from 'sonner'
 
@@ -94,7 +95,7 @@ export function ExpenseSheet({
             id: expense.id,
             date: new Date(expense.date),
             payee: expense.payee,
-            project_id: expense.project_id || '',
+            project_id: expense.project_id || SELECT_NONE_VALUE,
             expense_account_id: expense.expense_account_id,
             payment_account_id: expense.payment_account_id,
             amount: (expense.amount / 100).toString(),
@@ -103,7 +104,7 @@ export function ExpenseSheet({
         } : {
             date: new Date(),
             payee: "",
-            project_id: "",
+            project_id: SELECT_NONE_VALUE,
             expense_account_id: "",
             payment_account_id: "",
             amount: "",
@@ -119,7 +120,9 @@ export function ExpenseSheet({
             if (values.id) formData.append('id', values.id)
             formData.append('date', format(values.date, 'yyyy-MM-dd'))
             formData.append('payee', values.payee)
-            if (values.project_id) formData.append('project_id', values.project_id)
+            if (values.project_id && values.project_id !== SELECT_NONE_VALUE) {
+                formData.append('project_id', values.project_id)
+            }
             formData.append('expense_account_id', values.expense_account_id)
             formData.append('payment_account_id', values.payment_account_id)
             formData.append('amount', values.amount)
@@ -250,14 +253,17 @@ export function ExpenseSheet({
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Project (Optional)</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                                    <Select
+                                        onValueChange={(value) => field.onChange(value === SELECT_NONE_VALUE ? null : value)}
+                                        value={field.value || SELECT_NONE_VALUE}
+                                    >
                                         <FormControl>
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select a project" />
                                             </SelectTrigger>
                                         </FormControl>
                                         <SelectContent>
-                                            <SelectItem value="">None</SelectItem>
+                                            <SelectItem value={SELECT_NONE_VALUE}>None</SelectItem>
                                             {projects.map((p) => (
                                                 <SelectItem key={p.id} value={p.id}>
                                                     {p.name}

@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { format, startOfMonth, endOfMonth, subDays, differenceInDays, eachMonthOfInterval } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { ProjectFilter } from '@/components/reports/ProjectFilter'
 
 type AccountSummary = {
     id: string
@@ -545,6 +546,7 @@ export default function ProfitLossPage() {
                             </PopoverContent>
                         </Popover>
                     </div>
+                    <ProjectFilter availabilityNote="Project filtering is unavailable because journal entries do not have a project_id column." />
                 </div>
             </div>
 

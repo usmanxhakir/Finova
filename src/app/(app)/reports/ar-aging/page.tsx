@@ -25,6 +25,8 @@ import { Button } from '@/components/ui/button'
 import { CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { useSearchParams } from 'next/navigation'
+import { ProjectFilter } from '@/components/reports/ProjectFilter'
 
 interface AgingInvoice {
     id: string
@@ -48,7 +50,9 @@ interface AgingCustomer {
 
 export default function ARAgingPage() {
     const supabase = createClient()
+    const searchParams = useSearchParams()
     const [asOfDate, setAsOfDate] = useState<Date>(new Date())
+    const [projectId, setProjectId] = useState<string | null>(() => searchParams.get('project_id'))
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<AgingCustomer[]>([])
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -62,15 +66,22 @@ export default function ARAgingPage() {
         fetchSettings()
     }, [])
 
+    useEffect(() => {
+        setProjectId(searchParams.get('project_id'))
+    }, [searchParams])
+
     const loadData = async () => {
         setLoading(true)
         try {
             // Fetch all invoices that are not paid or void
-            const { data: invoices, error } = await supabase
+            let invoicesQuery = supabase
                 .from('invoices')
                 .select('id, number, contact_id, due_date, amount_due, contacts(name)')
                 .not('status', 'in', '("paid","void")')
                 .gt('amount_due', 0)
+
+            if (projectId) invoicesQuery = invoicesQuery.eq('project_id', projectId)
+            const { data: invoices, error } = await invoicesQuery
 
             if (error) throw error
 
@@ -121,7 +132,7 @@ export default function ARAgingPage() {
 
     useEffect(() => {
         loadData()
-    }, [asOfDate])
+    }, [asOfDate, projectId])
 
     const toggleRow = (id: string) => {
         const next = new Set(expandedRows)
@@ -248,6 +259,7 @@ export default function ARAgingPage() {
                         </PopoverContent>
                     </Popover>
                 </div>
+                <ProjectFilter onChange={setProjectId} />
             </div>
 
             {loading ? (

@@ -24,6 +24,8 @@ import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { useSearchParams } from 'next/navigation'
+import { ProjectFilter } from '@/components/reports/ProjectFilter'
 
 interface AgingBill {
     id: string
@@ -47,7 +49,9 @@ interface AgingVendor {
 
 export default function APAgingPage() {
     const supabase = createClient()
+    const searchParams = useSearchParams()
     const [asOfDate, setAsOfDate] = useState<Date>(new Date())
+    const [projectId, setProjectId] = useState<string | null>(() => searchParams.get('project_id'))
     const [loading, setLoading] = useState(true)
     const [data, setData] = useState<AgingVendor[]>([])
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -61,15 +65,22 @@ export default function APAgingPage() {
         fetchSettings()
     }, [])
 
+    useEffect(() => {
+        setProjectId(searchParams.get('project_id'))
+    }, [searchParams])
+
     const loadData = async () => {
         setLoading(true)
         try {
             // Fetch all bills that are not paid or void
-            const { data: bills, error } = await supabase
+            let billsQuery = supabase
                 .from('bills')
                 .select('id, number, contact_id, due_date, amount_due, contacts(name)')
                 .not('status', 'in', '("paid","void")')
                 .gt('amount_due', 0)
+
+            if (projectId) billsQuery = billsQuery.eq('project_id', projectId)
+            const { data: bills, error } = await billsQuery
 
             if (error) throw error
 
@@ -119,7 +130,7 @@ export default function APAgingPage() {
 
     useEffect(() => {
         loadData()
-    }, [asOfDate])
+    }, [asOfDate, projectId])
 
     const toggleRow = (id: string) => {
         const next = new Set(expandedRows)
@@ -246,6 +257,7 @@ export default function APAgingPage() {
                         </PopoverContent>
                     </Popover>
                 </div>
+                <ProjectFilter onChange={setProjectId} />
             </div>
 
             {loading ? (

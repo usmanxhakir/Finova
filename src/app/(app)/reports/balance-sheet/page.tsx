@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { ProjectFilter } from '@/components/reports/ProjectFilter'
 
 type BSAccount = {
     id: string
@@ -289,6 +290,7 @@ export default function BalanceSheetPage() {
                         </PopoverContent>
                     </Popover>
                 </div>
+                <ProjectFilter availabilityNote="Project filtering is unavailable because journal entries do not have a project_id column." />
             </div>
 
             {loading ? (

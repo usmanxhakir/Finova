@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Loader2, CalendarIcon, ChevronRight, ArrowRight } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Calendar } from '@/components/ui/calendar'
 import {
     Popover,
@@ -41,6 +41,7 @@ type AccountSummary = {
 
 export default function ProfitLossPage() {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
     const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()))
     const [endDate, setEndDate] = useState<Date>(endOfMonth(new Date()))
@@ -50,6 +51,13 @@ export default function ProfitLossPage() {
     const [viewMode, setViewMode] = useState<'single' | 'monthly'>('single')
     const [months, setMonths] = useState<Date[]>([])
     const [companySettings, setCompanySettings] = useState<any>(null)
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project_id'))
+
+    const projectIdFromUrl = searchParams.get('project_id')
+
+    useEffect(() => {
+        setSelectedProjectId(projectIdFromUrl)
+    }, [projectIdFromUrl])
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -82,7 +90,7 @@ export default function ProfitLossPage() {
                 }
             })
 
-            const getLines = async (from: string, to: string) => {
+            const getLines = async (from: string, to: string, projectId?: string | null) => {
                 const { data: entries } = await supabase
                     .from('journal_entries')
                     .select('id')
@@ -90,10 +98,12 @@ export default function ProfitLossPage() {
                     .lte('date', to)
                 const ids = (entries as any[] ?? []).map((je: any) => je.id)
                 if (ids.length === 0) return []
-                const { data: lines } = await supabase
+                let linesQuery = supabase
                     .from('journal_entry_lines')
-                    .select('account_id, debit, credit')
+                    .select('account_id, debit, credit, project_id')
                     .in('journal_entry_id', ids)
+                if (projectId) linesQuery = linesQuery.eq('project_id', projectId)
+                const { data: lines } = await linesQuery
                 return (lines as any[]) ?? []
             }
 
@@ -106,7 +116,8 @@ export default function ProfitLossPage() {
                 for (let i = 0; i < interval.length; i++) {
                     const lines = await getLines(
                         format(startOfMonth(interval[i]), 'yyyy-MM-dd'),
-                        format(endOfMonth(interval[i]), 'yyyy-MM-dd')
+                        format(endOfMonth(interval[i]), 'yyyy-MM-dd'),
+                        selectedProjectId
                     )
                     lines.forEach((line: any) => {
                         if (map[line.account_id]) {
@@ -120,8 +131,8 @@ export default function ProfitLossPage() {
                 const priorStartDate = subDays(priorEndDate, daysDiff - 1)
 
                 const [currentLines, priorLines] = await Promise.all([
-                    getLines(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd')),
-                    getLines(format(priorStartDate, 'yyyy-MM-dd'), format(priorEndDate, 'yyyy-MM-dd'))
+                    getLines(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), selectedProjectId),
+                    getLines(format(priorStartDate, 'yyyy-MM-dd'), format(priorEndDate, 'yyyy-MM-dd'), selectedProjectId)
                 ])
 
                 currentLines.forEach((line: any) => {
@@ -146,7 +157,7 @@ export default function ProfitLossPage() {
 
     useEffect(() => {
         loadData()
-    }, [startDate, endDate, viewMode])
+    }, [startDate, endDate, viewMode, selectedProjectId])
 
     // Grouping for Display
     const { income, cogs, expenses } = useMemo(() => {
@@ -546,7 +557,7 @@ export default function ProfitLossPage() {
                             </PopoverContent>
                         </Popover>
                     </div>
-                    <ProjectFilter availabilityNote="Project filtering is unavailable because journal entries do not have a project_id column." />
+                    <ProjectFilter onChange={setSelectedProjectId} />
                 </div>
             </div>
 

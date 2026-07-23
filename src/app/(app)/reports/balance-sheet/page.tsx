@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Loader2, CalendarIcon, AlertCircle, ArrowRight } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Calendar } from '@/components/ui/calendar'
 import {
     Popover,
@@ -38,11 +38,19 @@ type BSAccount = {
 
 export default function BalanceSheetPage() {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const supabase = createClient()
     const [asOfDate, setAsOfDate] = useState<Date>(new Date())
     const [loading, setLoading] = useState(true)
     const [accounts, setAccounts] = useState<BSAccount[]>([])
     const [companySettings, setCompanySettings] = useState<any>(null)
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => searchParams.get('project_id'))
+
+    const projectIdFromUrl = searchParams.get('project_id')
+
+    useEffect(() => {
+        setSelectedProjectId(projectIdFromUrl)
+    }, [projectIdFromUrl])
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -70,12 +78,14 @@ export default function BalanceSheetPage() {
             const ids = (entries as any[] ?? []).map((je: any) => je.id)
 
             // Step 2: get all lines for those entries
-            const { data: lines } = ids.length > 0
-                ? await supabase
+            let linesQuery = ids.length > 0
+                ? supabase
                     .from('journal_entry_lines')
-                    .select('account_id, debit, credit')
+                    .select('account_id, debit, credit, project_id')
                     .in('journal_entry_id', ids)
-                : { data: [] }
+                : null
+            if (linesQuery && selectedProjectId) linesQuery = linesQuery.eq('project_id', selectedProjectId)
+            const { data: lines } = linesQuery ? await linesQuery : { data: [] }
 
             // 3. Aggregate
             const map: Record<string, BSAccount> = {}
@@ -122,7 +132,7 @@ export default function BalanceSheetPage() {
 
     useEffect(() => {
         loadData()
-    }, [asOfDate])
+    }, [asOfDate, selectedProjectId])
 
     // Grouping
     const { assets, liabilities, equity, netIncomeValue } = useMemo(() => {
@@ -290,7 +300,7 @@ export default function BalanceSheetPage() {
                         </PopoverContent>
                     </Popover>
                 </div>
-                <ProjectFilter availabilityNote="Project filtering is unavailable because journal entries do not have a project_id column." />
+                <ProjectFilter onChange={setSelectedProjectId} />
             </div>
 
             {loading ? (

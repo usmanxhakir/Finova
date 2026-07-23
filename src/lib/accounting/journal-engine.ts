@@ -5,14 +5,47 @@ type JournalSourceType = Database['public']['Enums']['journal_source_type']
 
 // Explicit types to fix inference issues
 type InvoiceWithLines = Database['public']['Tables']['invoices']['Row'] & {
+    project_id: string | null
     invoice_line_items: Database['public']['Tables']['invoice_line_items']['Row'][]
 }
 
 type BillWithLines = Database['public']['Tables']['bills']['Row'] & {
+    project_id: string | null
     bill_line_items: Database['public']['Tables']['bill_line_items']['Row'][]
 }
 
 type PaymentRecord = Database['public']['Tables']['payments']['Row']
+
+type PaymentProjectAllocation = {
+    amount: number
+    project_id: string | null
+}
+
+async function getPaymentProjectAllocations(
+    supabase: SupabaseClient<Database>,
+    paymentId: string,
+    source: 'invoice' | 'bill'
+): Promise<PaymentProjectAllocation[]> {
+    const sourceRelation = source === 'invoice' ? 'invoices(project_id)' : 'bills(project_id)'
+    const { data: allocations, error } = await (supabase
+        .from('payment_allocations') as any)
+        .select(`amount_applied, ${sourceRelation}`)
+        .eq('payment_id', paymentId)
+
+    if (error) {
+        throw new Error(`Failed to fetch payment allocations: ${error.message}`)
+    }
+
+    return ((allocations || []) as any[])
+        .map((allocation) => {
+            const sourceRecord = source === 'invoice' ? allocation.invoices : allocation.bills
+            return {
+                amount: Number(allocation.amount_applied || 0),
+                project_id: sourceRecord?.project_id || null
+            }
+        })
+        .filter((allocation) => allocation.amount > 0)
+}
 
 /**
  * Automatically creates a balanced journal entry for a sent invoice.
@@ -100,7 +133,8 @@ export async function createInvoiceJournalEntry(
         account_id: arAccountId,
         description: `Total for Invoice ${invoice.number}`,
         debit: invoice.total,
-        credit: 0
+        credit: 0,
+        project_id: invoice.project_id || null
     })
 
     // Credit revenue accounts for each line item
@@ -111,7 +145,8 @@ export async function createInvoiceJournalEntry(
             account_id: item.account_id,
             description: item.description || `Line item for ${invoice.number}`,
             debit: 0,
-            credit: item.amount
+            credit: item.amount,
+            project_id: invoice.project_id || null
         })
     })
 
@@ -132,7 +167,8 @@ export async function createInvoiceJournalEntry(
                 account_id: (taxAccount as any).id,
                 description: `Tax for Invoice ${invoice.number}`,
                 debit: 0,
-                credit: invoice.tax_amount
+                credit: invoice.tax_amount,
+                project_id: invoice.project_id || null
             })
         }
     }
@@ -233,7 +269,8 @@ export async function voidInvoiceJournalEntries(
             account_id: line.account_id,
             description: `REVERSAL: ${line.description}`,
             debit: line.credit,
-            credit: line.debit
+            credit: line.debit,
+            project_id: line.project_id || null
         }))
 
         const { error: linesError } = await (supabase
@@ -311,14 +348,30 @@ export async function createPaymentJournalEntry(
 
     const jeId = (journalEntry as any).id
 
-    const lines: any[] = [
+    const allocations = await getPaymentProjectAllocations(supabase, paymentId, 'invoice')
+    const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+    const paymentLines = allocations.length > 0
+        ? allocations.flatMap((allocation) => [
+            {
+                amount: allocation.amount,
+                project_id: allocation.project_id
+            }
+        ])
+        : [{ amount: Number(payment.amount), project_id: null }]
+    const unappliedAmount = Math.max(0, Number(payment.amount) - allocatedAmount)
+    if (allocations.length > 0 && unappliedAmount > 0) {
+        paymentLines.push({ amount: unappliedAmount, project_id: null })
+    }
+
+    const lines: any[] = paymentLines.flatMap((paymentLine) => [
         {
             company_id: companyId,
             journal_entry_id: jeId,
             account_id: payment.account_id,
             description: `Payment received: ${payment.reference || ''}`,
-            debit: payment.amount,
-            credit: 0
+            debit: paymentLine.amount,
+            credit: 0,
+            project_id: paymentLine.project_id
         },
         {
             company_id: companyId,
@@ -326,9 +379,10 @@ export async function createPaymentJournalEntry(
             account_id: arAccountId,
             description: `A/R reduction for payment: ${payment.reference || ''}`,
             debit: 0,
-            credit: payment.amount
+            credit: paymentLine.amount,
+            project_id: paymentLine.project_id
         }
-    ]
+    ])
 
     const { error: linesError } = await (supabase
         .from('journal_entry_lines') as any)
@@ -418,7 +472,8 @@ export async function createBillJournalEntry(
             account_id: item.account_id,
             description: item.description || `Line item for ${bill.number}`,
             debit: item.amount,
-            credit: 0
+            credit: 0,
+            project_id: bill.project_id || null
         })
     })
 
@@ -439,7 +494,8 @@ export async function createBillJournalEntry(
                 account_id: (taxAccount as any).id,
                 description: `Tax for Bill ${bill.number}`,
                 debit: bill.tax_amount,
-                credit: 0
+                credit: 0,
+                project_id: bill.project_id || null
             })
         }
     }
@@ -451,7 +507,8 @@ export async function createBillJournalEntry(
         account_id: apAccountId,
         description: `Total for Bill ${bill.number}`,
         debit: 0,
-        credit: bill.total
+        credit: bill.total,
+        project_id: bill.project_id || null
     })
 
     // 5. Validate Balances
@@ -550,7 +607,8 @@ export async function voidBillJournalEntries(
             account_id: line.account_id,
             description: `REVERSAL: ${line.description}`,
             debit: line.credit,
-            credit: line.debit
+            credit: line.debit,
+            project_id: line.project_id || null
         }))
 
         const { error: linesError } = await (supabase
@@ -628,14 +686,30 @@ export async function createBillPaymentJournalEntry(
 
     const jeId = (journalEntry as any).id
 
-    const lines: any[] = [
+    const allocations = await getPaymentProjectAllocations(supabase, paymentId, 'bill')
+    const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+    const paymentLines = allocations.length > 0
+        ? allocations.flatMap((allocation) => [
+            {
+                amount: allocation.amount,
+                project_id: allocation.project_id
+            }
+        ])
+        : [{ amount: Number(payment.amount), project_id: null }]
+    const unappliedAmount = Math.max(0, Number(payment.amount) - allocatedAmount)
+    if (allocations.length > 0 && unappliedAmount > 0) {
+        paymentLines.push({ amount: unappliedAmount, project_id: null })
+    }
+
+    const lines: any[] = paymentLines.flatMap((paymentLine) => [
         {
             company_id: companyId,
             journal_entry_id: jeId,
             account_id: apAccountId,
             description: `A/P reduction for payment: ${payment.reference || ''}`,
-            debit: payment.amount,
-            credit: 0
+            debit: paymentLine.amount,
+            credit: 0,
+            project_id: paymentLine.project_id
         },
         {
             company_id: companyId,
@@ -643,9 +717,10 @@ export async function createBillPaymentJournalEntry(
             account_id: payment.account_id,
             description: `Payment sent: ${payment.reference || ''}`,
             debit: 0,
-            credit: payment.amount
+            credit: paymentLine.amount,
+            project_id: paymentLine.project_id
         }
-    ]
+    ])
 
     const { error: linesError } = await (supabase
         .from('journal_entry_lines') as any)
@@ -727,7 +802,8 @@ export async function createExpenseJournalEntry(
             account_id: expense.expense_account_id,
             description: `Expense: ${expense.payee}`,
             debit: expense.amount,
-            credit: 0
+            credit: 0,
+            project_id: expense.project_id || null
         },
         {
             company_id: companyId,
@@ -735,7 +811,8 @@ export async function createExpenseJournalEntry(
             account_id: expense.payment_account_id,
             description: `Payment for: ${expense.payee}`,
             debit: 0,
-            credit: expense.amount
+            credit: expense.amount,
+            project_id: expense.project_id || null
         }
     ]
 
@@ -793,7 +870,8 @@ export async function voidExpenseJournalEntries(
         account_id: line.account_id,
         description: `REVERSAL: ${line.description}`,
         debit: line.credit,
-        credit: line.debit
+        credit: line.debit,
+        project_id: line.project_id || null
     }))
 
     const totalDebits = reversalLines.reduce((sum, l) => sum + Number(l.debit || 0), 0)
@@ -894,6 +972,7 @@ export async function replaceInvoiceJournalEntry(
                 description: `REVERSAL: ${line.description}`,
                 debit: line.credit,
                 credit: line.debit,
+                project_id: line.project_id || null,
             }))
 
             const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
@@ -960,6 +1039,7 @@ export async function replaceBillJournalEntry(
                 description: `REVERSAL: ${line.description}`,
                 debit: line.credit,
                 credit: line.debit,
+                project_id: line.project_id || null,
             }))
 
             const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
@@ -1028,6 +1108,7 @@ export async function replacePaymentJournalEntry(
                 description: `REVERSAL: ${line.description}`,
                 debit: line.credit,
                 credit: line.debit,
+                project_id: line.project_id || null,
             }))
 
             const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)
@@ -1096,6 +1177,7 @@ export async function voidPaymentJournalEntry(
             description: `REVERSAL: ${line.description}`,
             debit: line.credit,
             credit: line.debit,
+            project_id: line.project_id || null,
         }))
 
         const { error: revLinesErr } = await (supabase.from('journal_entry_lines') as any).insert(reversalLines)

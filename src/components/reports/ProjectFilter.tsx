@@ -39,15 +39,32 @@ export function ProjectFilter({ onChange, availabilityNote }: ProjectFilterProps
 
     useEffect(() => {
         const loadProjects = async () => {
-            const { data: companyData } = await supabase.from('companies').select('id').single()
-            const company = companyData as unknown as Company | null
-            if (!company) return
+            const { data: companyData, error: companyError } = await supabase
+                .from('companies')
+                .select('id')
+                .limit(1)
+                .maybeSingle()
 
-            const { data } = await supabase
+            if (companyError) {
+                console.error('Error fetching company:', companyError)
+                return
+            }
+
+            const company = companyData as unknown as Company | null
+            if (!company) {
+                console.error('No company found')
+                return
+            }
+
+            const { data, error: projectsError } = await supabase
                 .from('projects')
                 .select('id, name, code')
                 .eq('company_id', company.id)
                 .order('name')
+
+            if (projectsError) {
+                console.error('Error fetching projects:', projectsError)
+            }
 
             setProjects(data || [])
         }

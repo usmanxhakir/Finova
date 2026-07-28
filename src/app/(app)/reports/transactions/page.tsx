@@ -99,9 +99,44 @@ export default async function TransactionListReportPage(props: {
     if (dateFrom) pmtQuery = pmtQuery.gte('date', dateFrom);
     if (dateTo) pmtQuery = pmtQuery.lte('date', dateTo);
 
-    // Payments do not have project_id currently, so if filtering by project_id, we just return empty array for payments
     let paymentsData: any[] = [];
-    if (!projectId) {
+
+    if (projectId) {
+        const { data: projInvoices } = await supabase
+            .from('invoices')
+            .select('id')
+            .eq('project_id', projectId);
+
+        const { data: projBills } = await supabase
+            .from('bills')
+            .select('id')
+            .eq('project_id', projectId);
+
+        const invoiceIds = (projInvoices || []).map((i: { id: string }) => i.id);
+        const billIds = (projBills || []).map((b: { id: string }) => b.id);
+
+        if (invoiceIds.length > 0 || billIds.length > 0) {
+            let allocQuery = supabase.from('payment_allocations').select('payment_id');
+            if (invoiceIds.length > 0 && billIds.length > 0) {
+                allocQuery = allocQuery.or(`invoice_id.in.(${invoiceIds.join(',')}),bill_id.in.(${billIds.join(',')})`);
+            } else if (invoiceIds.length > 0) {
+                allocQuery = allocQuery.in('invoice_id', invoiceIds);
+            } else {
+                allocQuery = allocQuery.in('bill_id', billIds);
+            }
+
+            const { data: allocData } = await allocQuery;
+            const paymentIds = Array.from(
+                new Set((allocData || []).map((a: { payment_id: string }) => a.payment_id).filter(Boolean))
+            );
+
+            if (paymentIds.length > 0) {
+                pmtQuery = pmtQuery.in('id', paymentIds);
+                const { data } = await pmtQuery;
+                paymentsData = data || [];
+            }
+        }
+    } else {
         const { data } = await pmtQuery;
         paymentsData = data || [];
     }

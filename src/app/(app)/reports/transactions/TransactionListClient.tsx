@@ -285,7 +285,7 @@ export default function TransactionListClient({
                          </div>
                     </div>
 
-                    <ProjectFilter availabilityNote="Project filtering applies to invoices, bills, and expenses. Payments are excluded because payments do not have a project_id column." />
+                    <ProjectFilter />
 
                     <div className="space-y-1 col-span-1 md:col-span-4 lg:col-span-2">
                         <label className="text-xs font-medium text-muted-foreground flex justify-between">
